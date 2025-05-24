@@ -1,0 +1,352 @@
+<div class="grid grid-cols-1 md:grid-cols-4 gap-6 p-4">
+  <!-- Users List Panel -->
+  <div class="md:col-span-1 bg-white rounded-lg shadow-md overflow-hidden">
+    <div class="p-4 bg-primary text-white font-semibold">
+      <h2 class="text-lg">Users</h2>
+    </div>
+
+    <div class="p-2" *ngIf="isLoading && users.length === 0">
+      <div class="flex justify-center py-4">
+        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    </div>
+
+    <div *ngIf="users.length === 0 && !isLoading" class="p-4 text-center text-gray-500">
+      No users found
+    </div>
+
+    <div class="overflow-y-auto max-h-[calc(100vh-12rem)]">
+      <div
+        *ngFor="let user of users"
+        (click)="selectUser(user.id)"
+        class="flex items-center p-3 border-b cursor-pointer hover:bg-gray-100"
+        [class.bg-gray-200]="selectedUser?.id === user.id"
+      >
+        <!-- User Avatar with Unread Indicator -->
+        <div class="relative w-10 h-10 mr-3">
+          <div class="w-10 h-10 rounded-full bg-gray-200 overflow-hidden">
+            <img *ngIf="user.avatar" [src]="user.avatar" alt="User avatar" class="w-full h-full object-cover">
+            <div *ngIf="!user.avatar" class="w-full h-full flex items-center justify-center text-gray-500">
+              {{user.name.charAt(0) || 'U'}}
+            </div>
+          </div>
+          <!-- Unread messages indicator -->
+          <div *ngIf="user.unreadCount && user.unreadCount > 0"
+               class="absolute -top-1 -right-1 w-5 h-5 bg-green-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
+            {{user.unreadCount > 9 ? '9+' : user.unreadCount}}
+          </div>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="flex justify-between items-start">
+            <p class="text-sm font-medium text-gray-900 truncate">{{user.name}}</p>
+            <!-- Display time for last message -->
+            <p *ngIf="user.lastMessage" class="text-xs text-gray-400 ml-2 whitespace-nowrap">
+              {{user.lastMessage.timestamp | date:'shortTime'}}
+            </p>
+          </div>
+          <!-- <p class="text-xs text-gray-500 truncate">{{user.email}}</p> -->
+          <!-- Display last message if available -->
+          <div *ngIf="user.lastMessage" class="flex justify-between items-start mt-1">
+            <p class="text-xs truncate"
+               [ngClass]="{
+                 'text-blue-600 font-medium': user.lastMessage.senderType === 'admin',
+                 'text-gray-600 italic': user.lastMessage.senderType === 'user',
+                 'text-green-600': user.lastMessage.senderType === 'bot'
+               }">
+              <span *ngIf="user.lastMessage.senderType === 'admin'" class="text-xs text-blue-700 mr-1">You:</span>
+              <span *ngIf="user.lastMessage.senderType === 'bot'" class="text-xs text-green-700 mr-1">Bot:</span>
+              {{user.lastMessage.content}}
+            </p>
+            <!-- Display date if message is not from today -->
+            <p *ngIf="!isMessageFromToday(user.lastMessage.timestamp)" class="text-xs text-gray-400 ml-2 whitespace-nowrap">
+              {{user.lastMessage.timestamp | date:'shortDate'}}
+            </p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Chat Panel -->
+  <div class="md:col-span-3 bg-white rounded-lg shadow-md flex flex-col min-h-[30rem]">
+    <div *ngIf="!selectedUser" class="flex-1 flex items-center justify-center text-gray-400">
+      <p>Select a user to start chatting</p>
+    </div>
+
+    <ng-container *ngIf="selectedUser">
+      <!-- Header -->
+      <div class="p-4 border-b flex items-center">
+        <div class="w-10 h-10 rounded-full bg-gray-200 overflow-hidden mr-3">
+          <img *ngIf="selectedUser.avatar" [src]="selectedUser.avatar" alt="User avatar" class="w-full h-full object-cover">
+          <div *ngIf="!selectedUser.avatar" class="w-full h-full flex items-center justify-center text-gray-500">
+            {{selectedUser.name.charAt(0) || 'U'}}
+          </div>
+        </div>
+        <div>
+          <h3 class="text-lg font-medium">{{selectedUser.name}}</h3>
+          <!-- <p class="text-sm text-gray-500">{{selectedUser.email}}</p> -->
+        </div>
+      </div>
+
+      <!-- Messages -->
+      <div #messageContainer class="flex-1 overflow-y-auto p-4 space-y-5 bg-gray-50 max-h-[calc(100vh-20rem)]">
+        <div *ngIf="isLoading" class="flex justify-center py-4">
+          <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        </div>
+
+        <div *ngIf="messages.length === 0 && !isLoading" class="text-center py-4 text-gray-400">
+          No messages yet
+        </div>
+
+        <!-- Debug Messages Count -->
+        <div *ngIf="!isLoading" class="text-xs text-gray-400 text-center mb-2">
+          Message count: {{messages.length}}
+        </div>
+
+        <!-- Messages grouped by date -->
+        <ng-container *ngFor="let group of getMessageGroups()">
+          <!-- Date separator -->
+          <div class="flex items-center justify-center my-4">
+            <div class="border-t border-gray-300 flex-grow"></div>
+            <div class="mx-4 text-xs font-medium text-gray-500 bg-white px-2 py-1 rounded-full shadow-sm">
+              {{formatMessageDate(group.date)}}
+            </div>
+            <div class="border-t border-gray-300 flex-grow"></div>
+          </div>
+
+          <!-- Messages for this date -->
+          <ng-container *ngFor="let message of group.messages">
+            <!-- Message container with positioning -->
+            <div
+              class="flex items-start mb-4"
+              [ngClass]="{
+                'justify-end': message.senderType === 'admin',
+                'justify-start': message.senderType === 'user' || message.senderType === 'bot'
+              }"
+            >
+              <!-- Deleted message -->
+              <div
+                *ngIf="message.isDeleted"
+                class="max-w-[75%] px-4 py-2 rounded-lg bg-gray-300 text-gray-500 italic"
+              >
+                <div class="text-sm">This message has been deleted</div>
+                <div class="text-xs mt-1 opacity-75 text-right">
+                  <span>{{message.timestamp | date:'h:mm a'}}</span>
+                </div>
+              </div>
+
+              <!-- Non-deleted message -->
+              <div
+                *ngIf="!message.isDeleted"
+                class="max-w-[75%] px-4 py-3 rounded-lg"
+                [ngClass]="{
+                  'bg-primary text-white rounded-br-none': message.senderType === 'admin',
+                  'bg-gray-200 text-gray-800 rounded-bl-none': message.senderType === 'user',
+                  'bg-gray-100 text-gray-800 rounded-bl-none': message.senderType === 'bot'
+                }"
+              >
+                <!-- User label with unread indicator -->
+                <div *ngIf="message.senderType === 'user'" class="flex items-center mb-1">
+                  <span class="text-xs font-medium text-gray-500 mr-2">User</span>
+                  <div *ngIf="!message.isRead" class="w-2 h-2 rounded-full bg-green-500"></div>
+                </div>
+
+                <!-- Bot header with icon inside the message container -->
+                <div *ngIf="message.senderType === 'bot'" class="flex items-center gap-1 mb-1">
+                  <div class="w-4 h-4 text-gray-500">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M20 3H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h6l-2 2v1h8v-1l-2-2h6c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 12H4V5h16v10z"/>
+                    </svg>
+                  </div>
+                  <span class="text-xs font-medium text-gray-500">Bot</span>
+                </div>
+
+                <!-- Admin message with edit/delete controls -->
+                <div *ngIf="message.senderType === 'admin'" class="flex justify-between items-center mb-2">
+                  <span class="text-xs font-medium text-white bg-purple-700 px-2 py-0.5 rounded-full">Admin</span>
+                  <div class="flex gap-2">
+
+                    <button
+                      (click)="deleteMessage(message)"
+                      class="text-xs bg-red-500 hover:bg-red-600 text-white px-2 py-0.5 rounded transition-colors duration-200 flex items-center gap-1 focus:outline-none">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                      Delete
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Editable message content for Admin -->
+                <div *ngIf="message.senderType === 'admin' && message.isEditing" class="mb-2">
+                  <input
+                    type="text"
+                    [(ngModel)]="message.editContent"
+                    class="w-full p-1.5 text-sm bg-white bg-opacity-20 border border-white border-opacity-30 rounded text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    (keyup.enter)="saveMessageEdit(message)"
+                    #editInput
+                  />
+                  <div class="flex justify-end gap-2 mt-2">
+                    <button
+
+                      (click)="cancelMessageEdit(message)"
+                      class="text-xs px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded transition-colors duration-200 focus:outline-none">
+                      Cancel
+                    </button>
+                    <button
+                      (click)="saveMessageEdit(message)"
+                      class="text-xs px-3 py-1 bg-green-500 hover:bg-green-600 text-white rounded font-medium transition-colors duration-200 focus:outline-none flex items-center gap-1">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                      </svg>
+                      Save
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Regular (non-editing) message content -->
+                <div *ngIf="!(message.senderType === 'admin' && message.isEditing)" class="text-sm">
+                  {{message.content || 'No content available'}}
+                </div>
+
+                <!-- Error message if applicable -->
+                <div *ngIf="message.error" class="text-xs mt-1 text-red-500 bg-red-100 rounded-md p-2 flex items-center gap-1">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  {{message.error}}
+                </div>
+
+                <div class="text-xs mt-1 opacity-75 text-right">
+                  <span>{{message.timestamp | date:'h:mm a'}}</span>
+                </div>
+
+                <!-- File Attachment -->
+                <div *ngIf="message.file" class="mt-2 p-2 bg-white bg-opacity-10 rounded">
+                  <!-- Image files -->
+                  <div *ngIf="message.file.mimetype && message.file.mimetype.includes('image')" class="mt-2">
+                    <div class="flex justify-between items-center mb-1">
+                      <span class="text-xs font-medium">{{message.file.originalname}}</span>
+                      <button
+                        (click)="downloadFile(message.file.data, message.file.originalname)"
+                        class="text-xs bg-green-500 hover:bg-green-600 text-white px-2 py-0.5 rounded transition-colors duration-200 flex items-center gap-1 focus:outline-none">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                        Download
+                      </button>
+                    </div>
+                    <img
+                      [src]="message.file.data"
+                      [alt]="message.file.originalname"
+                      class="max-w-full rounded max-h-60 cursor-pointer"
+                      (click)="openImagePreview(message.file.data, message.file.originalname)"
+                    >
+                  </div>
+
+                  <!-- Other file types -->
+                  <div *ngIf="!message.file.mimetype || !message.file.mimetype.includes('image')" class="flex items-center gap-2 text-sm">
+                    <!-- File icon based on type -->
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <div class="flex flex-col w-full">
+                      <span class="truncate max-w-[150px]">{{message.file.originalname}}</span>
+                      <button
+                        (click)="downloadFile(message.file.data, message.file.originalname)"
+                        class="text-xs mt-1 bg-green-500 hover:bg-green-600 text-white px-2 py-0.5 rounded transition-colors duration-200 flex items-center w-fit gap-1 focus:outline-none">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                        Download
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </ng-container>
+        </ng-container>
+      </div>
+
+      <!-- Input -->
+      <div class="p-4 border-t bg-white">
+        <form (ngSubmit)="sendMessage()" class="flex flex-col gap-2">
+          <!-- Message Input -->
+          <div class="flex gap-3">
+            <input
+              type="text"
+              [(ngModel)]="newMessage"
+              name="message"
+              class="flex-1 border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent shadow-sm text-gray-700"
+              placeholder="Type your message here..."
+              [disabled]="isLoading"
+            >
+            <!-- File Upload Button -->
+            <button
+              type="button"
+              (click)="fileInput.click()"
+              class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-2 rounded-lg transition-colors duration-200 flex items-center justify-center"
+              [disabled]="isLoading"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+              </svg>
+            </button>
+            <input
+              #fileInput
+              type="file"
+              (change)="onFileSelected($event)"
+              style="display: none"
+            >
+            <button
+              type="submit"
+              class="bg-primary hover:bg-primary-dark text-white px-5 py-2 rounded-lg shadow transition-colors duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              [disabled]="(!newMessage.trim() && !selectedFile) || isLoading"
+            >
+              <span *ngIf="!isLoading" class="flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+                Send
+              </span>
+              <div *ngIf="isLoading" class="h-5 w-5 border-2 border-t-transparent border-white rounded-full animate-spin"></div>
+            </button>
+          </div>
+
+          <!-- Selected File Preview -->
+          <div *ngIf="selectedFile" class="flex items-center gap-2 p-2 bg-gray-100 rounded-lg">
+            <div class="flex items-center gap-2 flex-1">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+              </svg>
+              <span class="text-sm truncate">{{selectedFile.name}}</span>
+              <span class="text-xs text-gray-500">{{formatFileSize(selectedFile.size)}}</span>
+            </div>
+            <button
+              type="button"
+              (click)="removeSelectedFile()"
+              class="text-red-500 hover:text-red-700 p-1 rounded-full"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <!-- Loading status message -->
+          <div *ngIf="isLoading" class="text-xs text-primary text-center animate-pulse">
+            <span *ngIf="selectedFile">Uploading file... This may take a moment.</span>
+            <span *ngIf="!selectedFile">Sending message...</span>
+          </div>
+        </form>
+      </div>
+    </ng-container>
+  </div>
+</div>
+
+<!-- Simple Image Preview Modal -->
+<div *ngIf="previewImage" class="fixed inset-0 z-50 bg-black bg-opacity-70 flex items-center justify-center p-4" (click)="closeImagePreview()">
+  <img [src]="previewImage.url" [alt]="previewImage.name" class="max-w-full max-h-[80vh] object-contain">
+</div>

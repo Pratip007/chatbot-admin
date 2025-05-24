@@ -1,0 +1,48 @@
+/* You can add global styles to this file, and also import other style files */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .btn {
+    @apply px-3 py-2 md:px-4 md:py-2 rounded-md font-medium transition-colors duration-200 text-sm md:text-base;
+  }
+  .btn-primary {
+    @apply bg-primary text-white hover:bg-secondary;
+  }
+  .btn-danger {
+    @apply bg-danger text-white hover:bg-red-700;
+  }
+  .card {
+    @apply bg-white rounded-lg shadow-md p-4 md:p-6;
+  }
+  .input {
+    @apply w-full px-3 py-2 md:px-4 md:py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-sm md:text-base;
+  }
+}
+
+/* Mobile-first breakpoint */
+html {
+  font-size: 14px;
+}
+
+/* Tablet and above */
+@media (min-width: 768px) {
+  html {
+    font-size: 16px;
+  }
+}
+
+/* Make form elements take full width on mobile */
+@screen sm {
+  .form-row {
+    @apply flex flex-col;
+  }
+}
+
+@screen md {
+  .form-row {
+    @apply flex-row;
+  }
+}

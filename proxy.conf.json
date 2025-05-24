@@ -1,0 +1,13 @@
+{
+  "/api": {
+    "target": "https://api.urbanwealthcapitals.com",
+    "secure": true,
+    "changeOrigin": true
+  },
+  "/socket.io": {
+    "target": "https://api.urbanwealthcapitals.com",
+    "secure": true,
+    "changeOrigin": true,
+    "ws": true
+  }
+}

@@ -1,0 +1,96 @@
+<div class="bg-white rounded-lg shadow-md p-4 md:p-6 mb-4 md:mb-6">
+  <div class="flex justify-between items-center mb-4 md:mb-6">
+    <h1 class="text-lg md:text-2xl font-bold flex items-center">
+      <button (click)="goBack()" class="mr-2 md:mr-4 text-gray-500 hover:text-gray-700">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 md:h-6 md:w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+        </svg>
+      </button>
+      User Details
+    </h1>
+  </div>
+
+  <div *ngIf="user" class="mb-4 md:mb-6">
+    <div class="flex flex-col sm:flex-row sm:items-center mb-4">
+      <div class="w-16 h-16 rounded-full bg-gray-300 flex items-center justify-center overflow-hidden mb-3 sm:mb-0 sm:mr-4 mx-auto sm:mx-0">
+        <img *ngIf="user.avatar" [src]="user.avatar" alt="User avatar">
+        <span *ngIf="!user.avatar" class="text-2xl">{{user.name.charAt(0)}}</span>
+      </div>
+      <div class="text-center sm:text-left">
+        <h2 class="text-lg md:text-xl font-bold">{{user.name}}</h2>
+        <p class="text-gray-600 text-sm md:text-base">{{user.email}}</p>
+        <div class="flex items-center mt-1 justify-center sm:justify-start">
+          <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full mr-2"
+                [ngClass]="{
+                  'bg-green-100 text-green-800': user.status === 'active',
+                  'bg-red-100 text-red-800': user.status === 'inactive',
+                  'bg-gray-100 text-gray-800': user.status === 'banned'
+                }">
+            {{user.status}}
+          </span>
+          <span class="text-xs text-gray-500">Joined: {{user.createdAt | date:'mediumDate'}}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div *ngIf="!user" class="flex justify-center items-center py-6 md:py-8">
+    <p class="text-gray-500">Loading user information...</p>
+  </div>
+</div>
+
+<div class="bg-white rounded-lg shadow-md p-4 md:p-6">
+  <h2 class="text-lg md:text-xl font-bold mb-3 md:mb-4">Conversation</h2>
+
+  <div class="flex flex-col space-y-3 md:space-y-4 mb-4 md:mb-6 max-h-72 md:max-h-96 overflow-y-auto">
+    <div *ngFor="let message of messages" class="flex" [ngClass]="{'justify-end': !message.isUserMessage}">
+      <div class="max-w-full sm:max-w-3/4" *ngIf="message.status !== 'deleted'">
+        <div class="px-3 py-2 md:px-4 md:py-3 rounded-lg"
+             [ngClass]="{
+               'bg-gray-100': message.isUserMessage,
+               'bg-primary text-white': !message.isUserMessage
+             }">
+          <div *ngIf="editingMessage?.id !== message.id">
+            <div class="text-sm md:text-base break-words">{{message.content}}</div>
+          </div>
+          <div *ngIf="editingMessage?.id === message.id" class="space-y-2">
+            <textarea
+              rows="3"
+              class="input bg-white text-sm md:text-base w-full"
+              [(ngModel)]="editingMessage!.content"></textarea>
+            <div class="flex justify-end space-x-2">
+              <button (click)="cancelEditing()" class="text-xs text-gray-600 hover:text-gray-800">Cancel</button>
+              <button (click)="saveEdit()" class="text-xs text-green-600 hover:text-green-800">Save</button>
+            </div>
+          </div>
+        </div>
+        <div class="text-xs text-gray-500 mt-1 flex justify-between">
+          <span>{{message.createdAt | date:'short'}}</span>
+          <div *ngIf="!message.isUserMessage" class="space-x-2">
+            <button *ngIf="editingMessage?.id !== message.id" (click)="startEditing(message)" class="text-gray-600 hover:text-gray-800">Edit</button>
+            <button *ngIf="editingMessage?.id !== message.id" (click)="deleteMessage(message.id)" class="text-red-600 hover:text-red-800">Delete</button>
+          </div>
+        </div>
+      </div>
+      <div *ngIf="message.status === 'deleted'" class="px-3 py-2 md:px-4 md:py-3 rounded-lg bg-gray-100 text-gray-500 italic text-sm">
+        This message has been deleted
+      </div>
+    </div>
+    <div *ngIf="messages.length === 0" class="text-center py-6 md:py-8 text-gray-500 text-sm md:text-base">
+      No messages found for this user
+    </div>
+  </div>
+
+  <div class="mt-4">
+    <div class="flex flex-col sm:flex-row items-start space-y-2 sm:space-y-0 sm:space-x-2">
+      <textarea
+        rows="3"
+        class="input text-sm md:text-base flex-grow"
+        placeholder="Type your reply here..."
+        [(ngModel)]="newMessage"></textarea>
+      <button (click)="sendMessage()" class="btn btn-primary mt-0 sm:mt-2 w-full sm:w-auto" [disabled]="!newMessage.trim()">
+        Send
+      </button>
+    </div>
+  </div>
+</div>
