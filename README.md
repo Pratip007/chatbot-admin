@@ -6,20 +6,17 @@ A modern Angular-based admin interface for managing chatbot conversations, users
 
 ### Development
 ```bash
-npm install
+npm install --legacy-peer-deps
 npm start
 ```
 
 ### Production Deployment
 ```bash
-# Windows
-deploy.bat
-
-# Linux/Mac
-chmod +x deploy.sh && ./deploy.sh
-
-# Manual
+# Local build
 npm run build:prod
+
+# Vercel deployment (automatic)
+git push origin main
 ```
 
 ## 📁 Project Structure
@@ -38,8 +35,7 @@ chatbot-admin/
 │       ├── environment.ts (development)
 │       └── environment.prod.ts (production)
 ├── dist/admin/ (production build)
-├── deploy.bat (Windows deployment)
-├── deploy.sh (Linux/Mac deployment)
+├── .npmrc (dependency resolution)
 ├── vercel.json (Vercel config)
 ├── .htaccess (Apache config)
 └── public/_redirects (Netlify config)
@@ -67,19 +63,24 @@ chatbot-admin/
 
 ## 🌐 Deployment
 
-### Hosting Platforms
+### Vercel (Recommended)
+1. Push to GitHub repository
+2. Connect to Vercel
+3. Automatic deployment with provided configuration
+4. See [Vercel Deployment Guide](VERCEL_DEPLOYMENT.md) for details
+
+### Other Platforms
 - **Netlify**: Use `public/_redirects` for SPA routing
-- **Vercel**: Use `vercel.json` for configuration
 - **Apache**: Use `.htaccess` for SPA routing
 - **Nginx**: Configure try_files directive
 
-### Quick Deploy
-1. Run `npm run build:prod`
-2. Upload `dist/admin` folder to your web server
-3. Configure SPA routing (files provided)
-4. Ensure backend API is accessible
-
 ## 🔍 Troubleshooting
+
+### Dependency Issues
+If you encounter npm dependency conflicts:
+```bash
+npm install --legacy-peer-deps
+```
 
 ### "No Data" in Production
 1. Check browser console for API errors
@@ -90,7 +91,7 @@ chatbot-admin/
 ### Common Issues
 - **CORS Errors**: Configure backend for admin domain
 - **404 on Refresh**: Configure web server for SPA routing
-- **Build Failures**: Run `npm ci` to reinstall dependencies
+- **Build Failures**: Use `--legacy-peer-deps` flag
 
 ## 📊 Features
 
@@ -105,7 +106,7 @@ chatbot-admin/
 - Environment-specific configuration
 
 ### 🔧 Technical Features
-- Angular 19
+- Angular 19.2
 - TypeScript
 - Tailwind CSS
 - Socket.IO client
@@ -114,8 +115,7 @@ chatbot-admin/
 
 ## 📚 Documentation
 
-- [Production Deployment Guide](PRODUCTION_DEPLOYMENT.md)
-- [Debug Guide](PRODUCTION_DEBUG_GUIDE.md)
+- [Vercel Deployment Guide](VERCEL_DEPLOYMENT.md)
 
 ## 🔒 Security
 
@@ -123,6 +123,14 @@ chatbot-admin/
 - CORS configured for specific domains
 - Security headers included
 - XSS protection enabled
+
+## ✅ Recent Fixes
+
+### Vercel Deployment Issue (Resolved)
+- ✅ Fixed Angular version conflicts
+- ✅ Added `.npmrc` for dependency resolution
+- ✅ Updated build configuration
+- ✅ Corrected environment file setup
 
 ---
 
