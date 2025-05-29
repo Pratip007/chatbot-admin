@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable, map, throwError, forkJoin, of, switchMap, tap, catchError } from 'rxjs';
 import { User } from '../models/user.model';
 import { ChatMessage } from '../models/chat-message.model';
@@ -392,11 +392,10 @@ export class UserService {
 
     console.log(`Attempting to delete user ${userId} by admin ${adminId}`);
 
-    return this.http.delete(`${this.apiUrl}/users/${userId}`, {
-      body: {
-        adminId: adminId
-      }
-    }).pipe(
+    // Use HttpParams for better production compatibility
+    const params = new HttpParams().set('adminId', adminId);
+
+    return this.http.delete(`${this.apiUrl}/users/${userId}`, { params }).pipe(
       tap(response => {
         console.log('User deletion successful:', response);
       }),
@@ -421,12 +420,12 @@ export class UserService {
 
     console.log(`Attempting to delete all users by admin ${adminId}`);
 
-    return this.http.delete(`${this.apiUrl}/users/all`, {
-      body: {
-        adminId: adminId,
-        confirmationCode: confirmationCode
-      }
-    }).pipe(
+    // Use HttpParams for better production compatibility
+    const params = new HttpParams()
+      .set('adminId', adminId)
+      .set('confirmationCode', confirmationCode);
+
+    return this.http.delete(`${this.apiUrl}/users/all`, { params }).pipe(
       tap(response => {
         console.log('All users deletion successful:', response);
       }),
@@ -436,5 +435,4 @@ export class UserService {
       })
     );
   }
-
 }
