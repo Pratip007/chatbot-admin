@@ -392,10 +392,13 @@ export class UserService {
 
     console.log(`Attempting to delete user ${userId} by admin ${adminId}`);
 
-    // Send adminId in request body for better production compatibility
-    return this.http.delete(`${this.apiUrl}/users/${userId}`, {
+    // Use proper Angular HttpClient syntax for DELETE with body
+    const options = {
+      headers: { 'Content-Type': 'application/json' },
       body: { adminId: adminId }
-    }).pipe(
+    };
+
+    return this.http.delete(`${this.apiUrl}/users/${userId}`, options).pipe(
       tap(response => {
         console.log('User deletion successful:', response);
       }),
@@ -420,13 +423,16 @@ export class UserService {
 
     console.log(`Attempting to delete all users by admin ${adminId}`);
 
-    // Send parameters in request body for better production compatibility
-    return this.http.delete(`${this.apiUrl}/users/all`, {
+    // Use proper Angular HttpClient syntax for DELETE with body
+    const options = {
+      headers: { 'Content-Type': 'application/json' },
       body: {
         adminId: adminId,
         confirmationCode: confirmationCode
       }
-    }).pipe(
+    };
+
+    return this.http.delete(`${this.apiUrl}/users/all`, options).pipe(
       tap(response => {
         console.log('All users deletion successful:', response);
       }),
