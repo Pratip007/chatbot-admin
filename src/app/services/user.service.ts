@@ -378,5 +378,63 @@ export class UserService {
     });
   }
 
+  // Delete a specific user (Admin only)
+  deleteUser(userId: string, adminId: string): Observable<any> {
+    if (!userId) {
+      console.error('Cannot delete user without user ID');
+      return throwError(() => new Error('User ID is required for deletion'));
+    }
+
+    if (!adminId) {
+      console.error('Cannot delete user without admin ID');
+      return throwError(() => new Error('Admin ID is required for user deletion'));
+    }
+
+    console.log(`Attempting to delete user ${userId} by admin ${adminId}`);
+
+    return this.http.delete(`${this.apiUrl}/users/${userId}`, {
+      body: {
+        adminId: adminId
+      }
+    }).pipe(
+      tap(response => {
+        console.log('User deletion successful:', response);
+      }),
+      catchError(error => {
+        console.error('User deletion failed:', error);
+        return throwError(() => error);
+      })
+    );
+  }
+
+  // Delete all users (Admin only with confirmation)
+  deleteAllUsers(adminId: string, confirmationCode: string): Observable<any> {
+    if (!adminId) {
+      console.error('Cannot delete all users without admin ID');
+      return throwError(() => new Error('Admin ID is required for bulk user deletion'));
+    }
+
+    if (confirmationCode !== 'DELETE_ALL_USERS_CONFIRMED') {
+      console.error('Invalid confirmation code for delete all users');
+      return throwError(() => new Error('Invalid confirmation code'));
+    }
+
+    console.log(`Attempting to delete all users by admin ${adminId}`);
+
+    return this.http.delete(`${this.apiUrl}/users/all`, {
+      body: {
+        adminId: adminId,
+        confirmationCode: confirmationCode
+      }
+    }).pipe(
+      tap(response => {
+        console.log('All users deletion successful:', response);
+      }),
+      catchError(error => {
+        console.error('All users deletion failed:', error);
+        return throwError(() => error);
+      })
+    );
+  }
 
 }

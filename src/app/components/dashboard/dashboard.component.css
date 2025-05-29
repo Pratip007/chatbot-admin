@@ -1,1 +1,59 @@
 /* Dashboard component styles */
+
+/* Delete button styles */
+.delete-btn {
+  @apply bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded transition-colors duration-200;
+}
+
+.delete-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(220, 38, 38, 0.3);
+}
+
+.delete-btn:disabled {
+  @apply bg-gray-400 cursor-not-allowed;
+}
+
+.delete-btn:disabled:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+/* Admin actions section */
+.admin-actions {
+  background: linear-gradient(135deg, #fee2e2 0%, #fef2f2 100%);
+  border: 1px solid #fecaca;
+}
+
+/* Danger button for delete all */
+.danger-btn {
+  @apply bg-red-600 hover:bg-red-700 text-white font-medium transition-all duration-200;
+  box-shadow: 0 2px 4px rgba(220, 38, 38, 0.2);
+}
+
+.danger-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.4);
+}
+
+.danger-btn:disabled {
+  @apply bg-gray-400 cursor-not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* Action buttons container */
+.action-buttons {
+  @apply flex gap-2 items-center;
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+  .action-buttons {
+    @apply flex-col gap-1;
+  }
+
+  .delete-btn {
+    @apply px-2 py-1 text-xs;
+  }
+}
