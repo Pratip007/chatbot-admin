@@ -8,8 +8,7 @@ import { User } from '../../models/user.model';
 import { ChatMessage } from '../../models/chat-message.model';
 import { Subscription } from 'rxjs';
 import { finalize } from 'rxjs/operators';
-// @ts-ignore
-import heic2any from 'heic2any';
+// Dynamic import for heic2any to reduce bundle size
 
 @Component({
   selector: 'app-user-chat',
@@ -405,6 +404,9 @@ export class UserChatComponent implements OnInit, AfterViewChecked, OnDestroy {
         bytes[i] = binaryString.charCodeAt(i);
       }
       const blob = new Blob([bytes], { type: 'image/heic' });
+
+      // Dynamic import for heic2any to reduce bundle size
+      const heic2any = (await import('heic2any')).default;
 
       // Convert using heic2any
       const convertedBlob = await heic2any({
