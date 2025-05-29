@@ -392,10 +392,10 @@ export class UserService {
 
     console.log(`Attempting to delete user ${userId} by admin ${adminId}`);
 
-    // Use HttpParams for better production compatibility
-    const params = new HttpParams().set('adminId', adminId);
-
-    return this.http.delete(`${this.apiUrl}/users/${userId}`, { params }).pipe(
+    // Send adminId in request body for better production compatibility
+    return this.http.delete(`${this.apiUrl}/users/${userId}`, {
+      body: { adminId: adminId }
+    }).pipe(
       tap(response => {
         console.log('User deletion successful:', response);
       }),
@@ -420,12 +420,13 @@ export class UserService {
 
     console.log(`Attempting to delete all users by admin ${adminId}`);
 
-    // Use HttpParams for better production compatibility
-    const params = new HttpParams()
-      .set('adminId', adminId)
-      .set('confirmationCode', confirmationCode);
-
-    return this.http.delete(`${this.apiUrl}/users/all`, { params }).pipe(
+    // Send parameters in request body for better production compatibility
+    return this.http.delete(`${this.apiUrl}/users/all`, {
+      body: {
+        adminId: adminId,
+        confirmationCode: confirmationCode
+      }
+    }).pipe(
       tap(response => {
         console.log('All users deletion successful:', response);
       }),
