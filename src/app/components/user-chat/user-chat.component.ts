@@ -1623,16 +1623,16 @@ export class UserChatComponent implements OnInit, AfterViewChecked, OnDestroy {
     }
 
     console.log('Testing delete with message:', testMessage._id);
-    console.log('API URL:', 'https://api.urbanwealthcapitals.com/api');
-    console.log('Full delete URL:', `https://api.urbanwealthcapitals.com/api/chat/message/${testMessage._id}`);
+    console.log('API URL:', this.userService['apiUrl']);
+    console.log('Full delete URL:', `${this.userService['apiUrl']}/chat/message/${testMessage._id}`);
 
     // Test if we can reach the API
     this.userService.getUsers().subscribe({
-      next: (users) => {
+      next: (users: any) => {
         console.log('✅ API is reachable - getUsers() works');
         console.log('Users count:', users.length);
       },
-      error: (error) => {
+      error: (error: any) => {
         console.error('❌ API is not reachable - getUsers() failed:', error);
       }
     });

@@ -11,8 +11,10 @@ import { environment } from '../../environments/environment';
 export class UserService {
   private apiUrl = environment.API_URL;
 
-  constructor(private http: HttpClient) { }
-
+  constructor(private http: HttpClient) {
+    console.log('UserService initialized with API URL:', this.apiUrl);
+    console.log('Environment:', environment);
+  }
 
   // delete chat
   deleteChatByUserIdAndId(id:string):Observable<any>{
@@ -56,8 +58,30 @@ export class UserService {
 
   // Get all users with their last message for sorting
   getAllUsersWithLastMessages(): Observable<User[]> {
+    console.log('Fetching users from:', `${this.apiUrl}/users`);
+
     return this.http.get<any[]>(`${this.apiUrl}/users`).pipe(
+      tap(users => {
+        console.log('Raw users response:', users);
+        console.log('Users count:', users?.length || 0);
+      }),
+      catchError(error => {
+        console.error('Error fetching users:', error);
+        console.error('API URL used:', `${this.apiUrl}/users`);
+        console.error('Error details:', {
+          status: error.status,
+          statusText: error.statusText,
+          message: error.message,
+          url: error.url
+        });
+        return throwError(() => error);
+      }),
       switchMap(users => {
+        if (!users || users.length === 0) {
+          console.log('No users found, returning empty array');
+          return of([]);
+        }
+
         // Map the basic user data
         const mappedUsers: User[] = users.map(user => ({
           id: user.userId,
@@ -71,13 +95,24 @@ export class UserService {
           avatar: `https://ui-avatars.com/api/?name=${user.username}&background=3B82F6&color=fff`
         }));
 
+        console.log('Mapped users:', mappedUsers);
+
         // Get unread counts for all users
-        const unreadCountsObservable = this.getUnreadMessageCounts();
+        const unreadCountsObservable = this.getUnreadMessageCounts().pipe(
+          catchError(error => {
+            console.warn('Error fetching unread counts, continuing without them:', error);
+            return of([]);
+          })
+        );
 
         // Create an array of observables that fetch the last message for each user
         const userObservables = mappedUsers.map(user => {
           // Get the last message for each user
           return this.getLastMessageForUser(user.id).pipe(
+            catchError(error => {
+              console.warn(`Error fetching last message for user ${user.id}:`, error);
+              return of(null);
+            }),
             map(lastMessage => {
               if (lastMessage) {
                 // Update user with last message
@@ -94,6 +129,9 @@ export class UserService {
         // Combine all user observables with unread counts
         return forkJoin([forkJoin(userObservables), unreadCountsObservable]).pipe(
           map(([updatedUsers, unreadCounts]) => {
+            console.log('Final users with messages:', updatedUsers);
+            console.log('Unread counts:', unreadCounts);
+
             // Merge unread counts with user data
             return updatedUsers.map(user => {
               const userUnreadCount = unreadCounts.find(count => count.userId === user.id);
@@ -339,4 +377,6 @@ export class UserService {
       }
     });
   }
+
+
 }
