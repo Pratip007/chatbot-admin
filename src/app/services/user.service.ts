@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, map, throwError, forkJoin, of, switchMap } from 'rxjs';
+import { Observable, map, throwError, forkJoin, of, switchMap, tap, catchError } from 'rxjs';
 import { User } from '../models/user.model';
 import { ChatMessage } from '../models/chat-message.model';
 import { environment } from '../../environments/environment';
@@ -16,9 +16,22 @@ export class UserService {
 
   // delete chat
   deleteChatByUserIdAndId(id:string):Observable<any>{
-    console.log("usr service ",id);
+    console.log("usr service - attempting to delete message with ID:", id);
+    const deleteUrl = `${this.apiUrl}/chat/message/${id}`;
+    console.log("Delete URL:", deleteUrl);
 
-    return this.http.delete(`${this.apiUrl}/chat/message/${id}`);
+    return this.http.delete(deleteUrl).pipe(
+      tap(response => {
+        console.log("Delete successful, response:", response);
+      }),
+      catchError(error => {
+        console.error("Delete failed, error:", error);
+        console.error("Error status:", error.status);
+        console.error("Error message:", error.message);
+        console.error("Error body:", error.error);
+        return throwError(() => error);
+      })
+    );
   }
 
   // Get all users
@@ -292,5 +305,38 @@ export class UserService {
         );
       })
     );
+  }
+
+  // Enhanced message editing with history tracking
+  editMessageWithHistory(messageId: string, content: string, reason?: string): Observable<any> {
+    if (!messageId) {
+      console.error('Cannot edit message without ID');
+      return throwError(() => new Error('Message ID is required for editing'));
+    }
+
+    return this.http.put(`${this.apiUrl}/chat/message/${messageId}/edit`, {
+      content: content,
+      adminId: '3', // This should be the actual admin ID from auth
+      reason: reason || 'Message edited by admin'
+    });
+  }
+
+  // Delete all messages for a specific user
+  deleteAllUserMessages(userId: string): Observable<any> {
+    if (!userId) {
+      console.error('Cannot delete messages without user ID');
+      return throwError(() => new Error('User ID is required for deletion'));
+    }
+
+    return this.http.delete(`${this.apiUrl}/chat/messages/user/${userId}`);
+  }
+
+  // Delete all messages for all users (Admin only)
+  deleteAllMessages(): Observable<any> {
+    return this.http.delete(`${this.apiUrl}/chat/messages/all`, {
+      body: {
+        adminId: '3' // This should be the actual admin ID from auth
+      }
+    });
   }
 }

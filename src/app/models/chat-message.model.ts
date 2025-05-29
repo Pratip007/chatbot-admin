@@ -3,11 +3,15 @@ export interface ChatMessage {
   content: string;
   timestamp: Date;
   senderType?: 'user' | 'bot' | 'admin';
+  senderId?: string;
   isEditing?: boolean;
   editContent?: string;
   isDeleted?: boolean;
   error?: string;
   isRead?: boolean;
+  isEdited?: boolean;
+  updatedAt?: Date;
+  editHistory?: EditRecord[];
   file?: {
     filename: string;
     originalname: string;
@@ -15,4 +19,11 @@ export interface ChatMessage {
     size: number;
     data: string;
   };
+}
+
+export interface EditRecord {
+  originalContent: string;
+  editedAt: Date;
+  editedBy: string;
+  reason: string;
 }

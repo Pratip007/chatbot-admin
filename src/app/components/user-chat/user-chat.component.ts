@@ -1,4 +1,4 @@
-import { Component, OnInit, ViewChild, ElementRef, AfterViewChecked, OnDestroy } from '@angular/core';
+import { Component, OnInit, ViewChild, ElementRef, AfterViewChecked, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
@@ -8,6 +8,8 @@ import { User } from '../../models/user.model';
 import { ChatMessage } from '../../models/chat-message.model';
 import { Subscription } from 'rxjs';
 import { finalize } from 'rxjs/operators';
+// @ts-ignore
+import heic2any from 'heic2any';
 
 @Component({
   selector: 'app-user-chat',
@@ -29,12 +31,31 @@ export class UserChatComponent implements OnInit, AfterViewChecked, OnDestroy {
   private subscriptions: Subscription[] = [];
   readonly #_bus=new Subscription();
   private deletingMessageIds = new Set<string>();
+  // Track converted HEIC images to avoid re-conversion
+  private convertedImages = new Map<string, string>();
+  // Track image sources for display
+  imageDisplaySources = new Map<string, string>();
+  // Track editing state to prevent multiple simultaneous edits
+  private editingMessageIds = new Set<string>();
+  // Flag to prevent infinite change detection loops
+  private isProcessingEdit = false;
+  // Modal-based edit system
+  editModal: {
+    isOpen: boolean;
+    message: ChatMessage | null;
+    editContent: string;
+  } = {
+    isOpen: false,
+    message: null,
+    editContent: ''
+  };
 
   constructor(
     private userService: UserService,
     private websocketService: WebsocketService,
     private route: ActivatedRoute,
-    private router: Router
+    private router: Router,
+    private changeDetectorRef: ChangeDetectorRef
   ) {}
 
   ngOnInit(): void {
@@ -49,16 +70,30 @@ export class UserChatComponent implements OnInit, AfterViewChecked, OnDestroy {
 
     // Subscribe to real-time message updates
     this.subscribeToWebSocketEvents();
+
+    // Make component accessible for debugging
+    (window as any).userChatComponent = this;
   }
 
   ngAfterViewChecked(): void {
-    this.scrollToBottom();
+    // Completely disable during edit processing to prevent infinite loops
+    if (this.isProcessingEdit) {
+      return;
+    }
+
+    // Only scroll to bottom if no messages are currently being edited
+    const hasEditingMessages = this.messages.some(m => m.isEditing);
+    if (!hasEditingMessages) {
+      this.scrollToBottom();
+    }
   }
 
   ngOnDestroy(): void {
     this.#_bus.unsubscribe();
     // Clean up subscriptions
     this.subscriptions.forEach(sub => sub.unsubscribe());
+    // Clean up editing state
+    this.editingMessageIds.clear();
   }
 
   // Subscribe to WebSocket events
@@ -77,22 +112,60 @@ export class UserChatComponent implements OnInit, AfterViewChecked, OnDestroy {
           content: messageData.content,
           timestamp: new Date(messageData.timestamp),
           senderType: messageData.senderType,
+          senderId: messageData.senderId,
           file: messageData.file,
           isRead: messageData.isRead || false
         };
 
+        // Validate that the message has an ID
+        if (!newMessage._id) {
+          console.warn('Received message without ID via WebSocket:', messageData);
+          return; // Skip messages without IDs from WebSocket
+        }
+
         // Check if this message is for our currently selected user
         if (this.selectedUser && (messageData.userId === this.selectedUser.id || !messageData.userId)) {
           // Check if the message already exists (avoid duplicates)
-          const exists = this.messages.some(msg => msg._id === newMessage._id);
+          const exists = this.messages.some(msg => {
+            // First check by ID if both messages have IDs
+            if (msg._id && newMessage._id) {
+              return msg._id === newMessage._id;
+            }
+            // Fallback to content and timestamp matching
+            return msg.content === newMessage.content &&
+                   msg.senderType === newMessage.senderType &&
+                   Math.abs(new Date(msg.timestamp).getTime() - new Date(newMessage.timestamp).getTime()) < 5000;
+          });
+
           if (!exists) {
-            this.messages.push(newMessage);
+            // Check if we have a local message without ID that matches this WebSocket message
+            const localMessageIndex = this.messages.findIndex(msg =>
+              !msg._id &&
+              msg.content === newMessage.content &&
+              msg.senderType === newMessage.senderType &&
+              Math.abs(new Date(msg.timestamp).getTime() - new Date(newMessage.timestamp).getTime()) < 10000
+            );
 
-            // Sort messages by timestamp
-            this.messages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+            if (localMessageIndex !== -1) {
+              // Update the existing local message with the ID from WebSocket
+              console.log('Updating local message with WebSocket ID:', newMessage._id);
+              this.messages[localMessageIndex]._id = newMessage._id;
+              this.messages[localMessageIndex].senderId = newMessage.senderId;
+              this.messages[localMessageIndex].isRead = newMessage.isRead;
+              this.messages[localMessageIndex].file = newMessage.file || this.messages[localMessageIndex].file;
 
-            // Scroll to bottom after receiving a new message
-            setTimeout(() => this.scrollToBottom(), 100);
+              // Trigger change detection to update the UI
+              this.changeDetectorRef.detectChanges();
+            } else {
+              // Add as new message
+              this.messages.push(newMessage);
+
+              // Sort messages by timestamp
+              this.messages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+              // Scroll to bottom after receiving a new message
+              setTimeout(() => this.scrollToBottom(), 100);
+            }
 
             // If this is a user message and admin is viewing the conversation, mark it as read
             if (newMessage.senderType === 'user' && this.selectedUser) {
@@ -123,7 +196,7 @@ export class UserChatComponent implements OnInit, AfterViewChecked, OnDestroy {
       }
     );
 
-    // Handle message updates
+    // Handle message updates (legacy)
     const updateSub = this.websocketService.getMessageUpdates().subscribe(
       (updateData) => {
         console.log('Received message update via WebSocket:', updateData);
@@ -132,6 +205,23 @@ export class UserChatComponent implements OnInit, AfterViewChecked, OnDestroy {
         const messageIndex = this.messages.findIndex(msg => msg._id === updateData._id);
         if (messageIndex !== -1) {
           this.messages[messageIndex].content = updateData.content;
+          this.messages[messageIndex].isEditing = false;
+        }
+      }
+    );
+
+    // Handle enhanced message edits
+    const editSub = this.websocketService.getMessageEdits().subscribe(
+      (editData) => {
+        console.log('Received message edit via WebSocket:', editData);
+
+        // Find and update the message
+        const messageIndex = this.messages.findIndex(msg => msg._id === editData._id);
+        if (messageIndex !== -1) {
+          this.messages[messageIndex].content = editData.content;
+          this.messages[messageIndex].isEdited = editData.isEdited;
+          this.messages[messageIndex].updatedAt = new Date(editData.updatedAt);
+          this.messages[messageIndex].editHistory = editData.editHistory;
           this.messages[messageIndex].isEditing = false;
         }
       }
@@ -156,6 +246,40 @@ export class UserChatComponent implements OnInit, AfterViewChecked, OnDestroy {
           this.showNotification(notificationMsg, 'info');
         }
         // DO NOT call deleteChatByUserIdAndId here
+      }
+    );
+
+    // Handle bulk message deletions
+    const bulkDeleteSub = this.websocketService.getAllMessageDeletions().subscribe(
+      (deleteData) => {
+        console.log('Received bulk message deletion via WebSocket:', deleteData);
+
+        if (deleteData.userId) {
+          // Single user's messages deleted
+          if (this.selectedUser && this.selectedUser.id === deleteData.userId) {
+            this.messages = [];
+          }
+
+          // Update user in list
+          const userToUpdate = this.users.find(u => u.id === deleteData.userId);
+          if (userToUpdate) {
+            userToUpdate.lastMessage = undefined;
+            userToUpdate.unreadCount = 0;
+          }
+
+          this.showNotification(`All messages deleted for user`, 'info');
+        } else {
+          // All messages for all users deleted
+          this.messages = [];
+          this.users.forEach(user => {
+            user.lastMessage = undefined;
+            user.unreadCount = 0;
+          });
+
+          this.showNotification('All messages deleted for all users', 'info');
+        }
+
+        this.refreshUsersList();
       }
     );
 
@@ -188,7 +312,7 @@ export class UserChatComponent implements OnInit, AfterViewChecked, OnDestroy {
     );
 
     // Store subscriptions for cleanup
-    this.subscriptions.push(messageSub, updateSub, deleteSub, readSub);
+    this.subscriptions.push(messageSub, updateSub, editSub, deleteSub, bulkDeleteSub, readSub);
   }
 
   scrollToBottom(): void {
@@ -211,17 +335,120 @@ export class UserChatComponent implements OnInit, AfterViewChecked, OnDestroy {
     document.body.removeChild(link);
   }
 
-  // Handle image preview in a larger modal
-  openImagePreview(imageUrl: string, imageName: string): void {
-    this.previewImage = {
-      url: imageUrl,
-      name: imageName
-    };
+  // Check if file should be displayed as image
+  isImageFile(file: any): boolean {
+    if (!file) {
+      console.warn('isImageFile: No file provided');
+      return false;
+    }
+
+    const result = this.getFileDisplayType(file.mimetype, file.originalname) === 'image';
+    console.log('isImageFile check for:', file.originalname, 'MIME:', file.mimetype, 'Result:', result);
+    return result;
+  }
+
+  // Handle image preview in a larger modal with HEIC support
+  async openImagePreview(file: any): Promise<void> {
+    if (!file) return;
+
+    try {
+      const imageUrl = await this.getImageSrc(file);
+      this.previewImage = {
+        url: imageUrl,
+        name: file.originalname || 'Image'
+      };
+    } catch (error) {
+      console.error('Error opening image preview:', error);
+    }
   }
 
   // Close image preview
   closeImagePreview(): void {
     this.previewImage = null;
+  }
+
+  // Check if file is HEIC/HEIF format
+  private isHeicFile(mimeType: string, filename: string): boolean {
+    if (!mimeType && !filename) return false;
+
+    const heicMimeTypes = ['image/heic', 'image/heif'];
+    const heicExtensions = ['.heic', '.heif'];
+
+    // Check MIME type first
+    if (heicMimeTypes.includes(mimeType?.toLowerCase())) {
+      return true;
+    }
+
+    // Check file extension (important for files with generic MIME types like application/octet-stream)
+    if (filename && heicExtensions.some(ext => filename.toLowerCase().endsWith(ext))) {
+      console.log('HEIC file detected by extension:', filename, 'MIME:', mimeType);
+      return true;
+    }
+
+    return false;
+  }
+
+  // Convert HEIC to JPEG for display
+  private async convertHeicToJpeg(fileData: string, filename: string): Promise<string> {
+    try {
+      // Check if already converted
+      const cacheKey = `${filename}_${fileData.substring(0, 50)}`;
+      if (this.convertedImages.has(cacheKey)) {
+        return this.convertedImages.get(cacheKey)!;
+      }
+
+      // Convert base64 to blob
+      const base64Data = fileData.includes(',') ? fileData.split(',')[1] : fileData;
+      const binaryString = atob(base64Data);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      const blob = new Blob([bytes], { type: 'image/heic' });
+
+      // Convert using heic2any
+      const convertedBlob = await heic2any({
+        blob: blob,
+        toType: 'image/jpeg',
+        quality: 0.8
+      }) as Blob;
+
+      // Convert back to base64
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          this.convertedImages.set(cacheKey, result);
+          resolve(result);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(convertedBlob);
+      });
+    } catch (error) {
+      console.error('Error converting HEIC image:', error);
+      // Return original data as fallback
+      return fileData.startsWith('data:') ? fileData : `data:image/heic;base64,${fileData}`;
+    }
+  }
+
+  // Get proper image source for display
+  async getImageSrc(file: any): Promise<string> {
+    if (!file || !file.data) {
+      return '';
+    }
+
+    // Ensure data has proper data URL format
+    let imageData = file.data;
+    if (!imageData.startsWith('data:')) {
+      imageData = `data:${file.mimetype || 'image/jpeg'};base64,${imageData}`;
+    }
+
+    // Convert HEIC files
+    if (this.isHeicFile(file.mimetype, file.originalname)) {
+      return await this.convertHeicToJpeg(file.data, file.originalname);
+    }
+
+    return imageData;
   }
 
   // Simple file icon helper to fix compile error
@@ -230,14 +457,19 @@ export class UserChatComponent implements OnInit, AfterViewChecked, OnDestroy {
   }
 
   // Helper to determine file display type
-  getFileDisplayType(mimeType: string): string {
-    if (!mimeType) return 'other';
+  getFileDisplayType(mimeType: string, filename?: string): string {
+    if (!mimeType && !filename) return 'other';
 
-    if (mimeType.startsWith('image/')) {
+    // Check for HEIC files specifically
+    if (this.isHeicFile(mimeType, filename || '')) {
       return 'image';
-    } else if (mimeType.startsWith('video/')) {
+    }
+
+    if (mimeType && mimeType.startsWith('image/')) {
+      return 'image';
+    } else if (mimeType && mimeType.startsWith('video/')) {
       return 'video';
-    } else if (mimeType.startsWith('audio/')) {
+    } else if (mimeType && mimeType.startsWith('audio/')) {
       return 'audio';
     } else if (mimeType === 'application/pdf') {
       return 'pdf';
@@ -248,57 +480,246 @@ export class UserChatComponent implements OnInit, AfterViewChecked, OnDestroy {
 
   // Message editing methods
   startEditingMessage(message: ChatMessage): void {
-    // Reset any other messages that might be in edit mode
-    this.messages.forEach(m => {
-      if (m !== message && m.isEditing) {
-        m.isEditing = false;
-      }
-    });
+    console.log('Starting to edit message:', message._id);
 
-    // Start editing this message
-    message.isEditing = true;
-    message.editContent = message.content;
+    // Set processing flag to prevent ngAfterViewChecked from running
+    this.isProcessingEdit = true;
 
-    // Focus the input field after it renders
-    setTimeout(() => {
-      const editInput = document.querySelector('input[type="text"]') as HTMLInputElement;
-      if (editInput) {
-        editInput.focus();
+    try {
+      // Check if message has ID
+      if (!message._id) {
+        this.showNotification('Cannot edit message without ID', 'error');
+        return;
       }
-    }, 0);
+
+      // Check if this message is already being edited
+      if (this.editingMessageIds.has(message._id)) {
+        console.log('Message is already being edited');
+        return;
+      }
+
+      // Check if any other message is currently being edited
+      const currentlyEditing = this.messages.find(m => m.isEditing);
+      if (currentlyEditing && currentlyEditing._id !== message._id) {
+        this.showNotification('Please finish editing the current message first', 'info');
+        return;
+      }
+
+      // Add to editing set
+      this.editingMessageIds.add(message._id);
+
+      // Reset any other messages that might be in edit mode
+      this.messages.forEach(m => {
+        if (m !== message && m.isEditing) {
+          m.isEditing = false;
+          if (m._id) {
+            this.editingMessageIds.delete(m._id);
+          }
+        }
+      });
+
+      // Start editing this message
+      message.isEditing = true;
+      message.editContent = message.content;
+
+      console.log('Edit mode activated for message:', message._id);
+
+    } catch (error) {
+      console.error('Error in startEditingMessage:', error);
+
+      // Clean up on error
+      message.isEditing = false;
+      message.editContent = undefined;
+      if (message._id) {
+        this.editingMessageIds.delete(message._id);
+      }
+
+      this.showNotification('Error starting edit mode', 'error');
+    } finally {
+      // Reset processing flag and trigger single change detection
+      this.isProcessingEdit = false;
+
+      // Use setTimeout to ensure this runs after the current execution context
+      setTimeout(() => {
+        this.changeDetectorRef.detectChanges();
+      }, 0);
+    }
   }
 
   cancelMessageEdit(message: ChatMessage): void {
-    message.isEditing = false;
-    message.editContent = undefined;
+    console.log('Cancelling edit for message:', message._id);
+
+    this.isProcessingEdit = true;
+
+    try {
+      // Remove from editing set
+      if (message._id) {
+        this.editingMessageIds.delete(message._id);
+        console.log('Removed from editing set:', message._id);
+      }
+
+      message.isEditing = false;
+      message.editContent = undefined;
+
+      console.log('Edit cancelled successfully');
+
+    } catch (error) {
+      console.error('Error in cancelMessageEdit:', error);
+    } finally {
+      this.isProcessingEdit = false;
+
+      // Trigger change detection after a brief delay
+      setTimeout(() => {
+        this.changeDetectorRef.detectChanges();
+      }, 0);
+    }
   }
 
   saveMessageEdit(message: ChatMessage): void {
-    if (!message.editContent?.trim()) {
+    console.log('Saving edit for message:', message._id);
+
+    this.isProcessingEdit = true;
+
+    try {
+      if (!message.editContent?.trim()) {
+        this.showNotification('Message content cannot be empty', 'error');
+        return;
+      }
+
+      if (!message._id) {
+        this.showNotification('Cannot save message without ID', 'error');
+        return;
+      }
+
+      // Check if already saving this message
+      if (!this.editingMessageIds.has(message._id)) {
+        console.log('Message is not in editing state');
+        return;
+      }
+
+      console.log('Proceeding with save...');
+
+      // Store original content for potential rollback
+      const originalContent = message.content;
+
+      // Update the message content
+      message.content = message.editContent.trim();
+      message.isEditing = false;
+
+      // Remove from editing set
+      this.editingMessageIds.delete(message._id);
+
+      console.log('Local state updated, calling server...');
+
+      // Use enhanced edit API with history tracking
+      this.editMessageWithHistory(message, originalContent, 'Message edited by admin');
+
+    } catch (error) {
+      console.error('Error in saveMessageEdit:', error);
+      this.showNotification('Error saving message edit', 'error');
+    } finally {
+      this.isProcessingEdit = false;
+
+      // Trigger change detection after a brief delay
+      setTimeout(() => {
+        this.changeDetectorRef.detectChanges();
+      }, 0);
+    }
+  }
+
+  // Enhanced edit message with history tracking
+  editMessageWithHistory(message: ChatMessage, originalContent: string, reason: string): void {
+    if (!message._id) {
+      console.warn('Cannot edit message without ID - skipping server update');
       return;
     }
 
-    // Update the message content
-    message.content = message.editContent.trim();
-    message.isEditing = false;
+    console.log('Sending edit request to server for message:', message._id);
 
-    // Update on server if needed
-    this.updateMessageOnServer(message);
+    this.userService.editMessageWithHistory(message._id, message.content, reason).subscribe({
+      next: (response) => {
+        console.log('Message edited successfully:', response);
+
+        // Update message with edit information
+        if (response.updatedMessage) {
+          message.isEdited = response.updatedMessage.isEdited;
+          message.updatedAt = new Date(response.updatedMessage.updatedAt);
+          message.editHistory = response.updatedMessage.editHistory;
+        }
+
+        this.showNotification('Message edited successfully', 'success');
+        this.changeDetectorRef.detectChanges();
+      },
+      error: (err) => {
+        console.error('Error editing message:', err);
+
+        // Rollback the content change on error
+        message.content = originalContent;
+        message.isEditing = true; // Put back in edit mode
+        message.editContent = originalContent;
+
+        // Add back to editing set
+        if (message._id) {
+          this.editingMessageIds.add(message._id);
+        }
+
+        this.changeDetectorRef.detectChanges();
+
+        this.showNotification('Failed to edit message. Please try again.', 'error');
+      }
+    });
   }
 
   deleteMessage(message: ChatMessage): void {
+    // Validate message ID
+    if (!message._id) {
+        console.error('Cannot delete message: No message ID found', message);
+        this.showNotification('Cannot delete message: This message was not properly saved to the server', 'error');
+
+        // Try to get the ID from server first
+        this.handleMessageWithoutId(message);
+
+        // Give it a moment to potentially get the ID, then offer local removal
+        setTimeout(() => {
+          if (!message._id) {
+            // Still no ID, offer to remove locally
+            if (confirm('This message was not saved to the server. Would you like to remove it from the chat locally?')) {
+              const messageIndex = this.messages.findIndex(m => m === message);
+              if (messageIndex !== -1) {
+                this.messages.splice(messageIndex, 1);
+                this.showNotification('Message removed locally', 'info');
+              }
+            }
+          } else {
+            // ID was found, try delete again
+            this.showNotification('Message ID found, you can try deleting again', 'info');
+          }
+        }, 2000);
+
+        return;
+    }
+
     // Check if already deleting this message
-    if (this.deletingMessageIds.has(message._id!)) {
+    if (this.deletingMessageIds.has(message._id)) {
         console.log('Delete already in progress for this message');
         return;
     }
 
+    console.log('Message to delete:', {
+        id: message._id,
+        content: message.content,
+        senderType: message.senderType,
+        timestamp: message.timestamp
+    });
+
     if (confirm('Are you sure you want to delete this message?')) {
+        console.log('Attempting to delete message:', message._id);
+
         // Add message ID to tracking set
-        this.deletingMessageIds.add(message._id!);
+        this.deletingMessageIds.add(message._id);
 
         // Call delete API once
-        this.userService.deleteChatByUserIdAndId(message._id!)
+        this.userService.deleteChatByUserIdAndId(message._id)
             .pipe(
                 // Automatically remove from tracking after 5 seconds (safety cleanup)
                 finalize(() => {
@@ -319,10 +740,29 @@ export class UserChatComponent implements OnInit, AfterViewChecked, OnDestroy {
                 },
                 error: (error) => {
                     console.error('Error deleting message:', error);
+                    console.error('Error details:', {
+                        status: error.status,
+                        statusText: error.statusText,
+                        message: error.message,
+                        error: error.error
+                    });
+
                     // Remove from tracking
                     this.deletingMessageIds.delete(message._id!);
-                    // Show error to user
-                    this.showNotification('Failed to delete message. Please try again.', 'error');
+
+                    // Show specific error message based on status
+                    let errorMessage = 'Failed to delete message. Please try again.';
+                    if (error.status === 404) {
+                        errorMessage = 'Message not found or already deleted.';
+                    } else if (error.status === 403) {
+                        errorMessage = 'You do not have permission to delete this message.';
+                    } else if (error.status === 500) {
+                        errorMessage = 'Server error. Please try again later.';
+                    } else if (error.status === 0) {
+                        errorMessage = 'Network error. Please check your connection.';
+                    }
+
+                    this.showNotification(errorMessage, 'error');
                 }
             });
     }
@@ -612,26 +1052,14 @@ export class UserChatComponent implements OnInit, AfterViewChecked, OnDestroy {
   private sendMessageViaHttp(): void {
     if (!this.selectedUser) return;
 
-    // Create FormData for the request
-    const formData = new FormData();
-    formData.append('userId', this.selectedUser.id);
-    formData.append('message', this.newMessage);
-    formData.append('adminId', '3'); // Should come from auth
-
-    // Add file if selected
-    if (this.selectedFile) {
-      formData.append('file', this.selectedFile, this.selectedFile.name);
-      console.log('Appending file to form data:', this.selectedFile.name);
-    }
-
-    // Send the request
-    this.userService.sendMessageWithFile(this.selectedUser.id, formData).subscribe({
+    // Send the request using the regular sendMessage method for text-only messages
+    this.userService.sendMessage(this.selectedUser.id, this.newMessage).subscribe({
       next: (response) => {
-        console.log('Message with file sent successfully:', response);
+        console.log('Message sent successfully:', response);
         this.handleMessageResponse(response);
       },
       error: (err) => {
-        console.error('Error sending message with file:', err);
+        console.error('Error sending message:', err);
         this.handleMessageError(err);
       }
     });
@@ -639,6 +1067,13 @@ export class UserChatComponent implements OnInit, AfterViewChecked, OnDestroy {
 
   private handleMessageResponse(response: any): void {
     console.log('Send message response:', response);
+    console.log('Response structure:', {
+      hasMessage: !!response.message,
+      hasId: !!response._id,
+      hasMessageId: !!(response.message && response.message._id),
+      responseKeys: Object.keys(response || {}),
+      messageKeys: response.message ? Object.keys(response.message) : []
+    });
 
     // Clear input fields
     const sentMessage = this.newMessage;
@@ -647,20 +1082,71 @@ export class UserChatComponent implements OnInit, AfterViewChecked, OnDestroy {
     this.selectedFile = null;
     this.isLoading = false;
 
-    // Admin message should come back via WebSocket, but add it here as fallback
-    // Add the admin message to our local array only if it wasn't added via WebSocket
-    const messageExists = this.messages.some(msg =>
-      msg.content === sentMessage &&
-      Math.abs(new Date(msg.timestamp).getTime() - new Date().getTime()) < 3000 &&
-      msg.senderType === 'admin'
-    );
+    let newAdminMessage: ChatMessage;
 
-    if (!messageExists) {
-      // Create a new message
-      const newAdminMessage: ChatMessage = {
+    // Try different response formats to extract message data
+    if (response && response.message && response.message._id) {
+      // Format 1: response.message contains the full message with _id
+      console.log('Using response.message format');
+      newAdminMessage = {
+        _id: response.message._id,
+        content: response.message.content || sentMessage,
+        timestamp: new Date(response.message.timestamp || Date.now()),
+        senderType: 'admin',
+        senderId: response.message.senderId || '3',
+        isRead: response.message.isRead || false,
+        file: response.fileData && sentFile ? {
+          filename: sentFile.name,
+          originalname: sentFile.name,
+          mimetype: sentFile.type,
+          size: sentFile.size,
+          data: response.fileData
+        } : response.message.file
+      };
+    } else if (response && response._id) {
+      // Format 2: response itself contains the message data
+      console.log('Using direct response format');
+      newAdminMessage = {
+        _id: response._id,
+        content: response.content || sentMessage,
+        timestamp: new Date(response.timestamp || Date.now()),
+        senderType: 'admin',
+        senderId: response.senderId || '3',
+        isRead: response.isRead || false,
+        file: response.fileData && sentFile ? {
+          filename: sentFile.name,
+          originalname: sentFile.name,
+          mimetype: sentFile.type,
+          size: sentFile.size,
+          data: response.fileData
+        } : response.file
+      };
+    } else if (response && response.success && response.data && response.data._id) {
+      // Format 3: response.data contains the message
+      console.log('Using response.data format');
+      newAdminMessage = {
+        _id: response.data._id,
+        content: response.data.content || sentMessage,
+        timestamp: new Date(response.data.timestamp || Date.now()),
+        senderType: 'admin',
+        senderId: response.data.senderId || '3',
+        isRead: response.data.isRead || false,
+        file: response.fileData && sentFile ? {
+          filename: sentFile.name,
+          originalname: sentFile.name,
+          mimetype: sentFile.type,
+          size: sentFile.size,
+          data: response.fileData
+        } : response.data.file
+      };
+    } else {
+      // Fallback: create message without ID and try to get it from server
+      console.warn('Server response missing message ID, creating local message and attempting to fetch ID');
+      newAdminMessage = {
         content: sentMessage,
         timestamp: new Date(),
         senderType: 'admin',
+        senderId: '3',
         file: response.fileData && sentFile ? {
           filename: sentFile.name,
           originalname: sentFile.name,
@@ -670,6 +1156,24 @@ export class UserChatComponent implements OnInit, AfterViewChecked, OnDestroy {
         } : undefined
       };
 
+      // Try to get the message ID by refreshing chat history after a short delay
+      setTimeout(() => {
+        if (this.selectedUser) {
+          this.attemptToGetMessageId(newAdminMessage);
+        }
+      }, 1000);
+    }
+
+    // Check if message already exists (avoid duplicates)
+    const messageExists = newAdminMessage._id ?
+      this.messages.some(msg => msg._id === newAdminMessage._id) :
+      this.messages.some(msg =>
+        msg.content === newAdminMessage.content &&
+        msg.senderType === 'admin' &&
+        Math.abs(new Date(msg.timestamp).getTime() - new Date(newAdminMessage.timestamp).getTime()) < 5000
+      );
+
+    if (!messageExists) {
       // Add it to the messages
       this.messages.push(newAdminMessage);
 
@@ -687,6 +1191,40 @@ export class UserChatComponent implements OnInit, AfterViewChecked, OnDestroy {
 
     // Refresh users list to update the order
     this.refreshUsersList();
+  }
+
+  // Attempt to get message ID from server by matching content and timestamp
+  private attemptToGetMessageId(message: ChatMessage): void {
+    if (!this.selectedUser || message._id) return;
+
+    console.log('Attempting to get message ID for:', message.content);
+
+    this.userService.getChatHistory(this.selectedUser.id).subscribe({
+      next: (serverMessages) => {
+        // Find the matching message on the server
+        const matchingMessage = serverMessages.find(serverMsg =>
+          serverMsg.content === message.content &&
+          serverMsg.senderType === 'admin' &&
+          Math.abs(new Date(serverMsg.timestamp).getTime() - new Date(message.timestamp).getTime()) < 10000 // 10 second tolerance
+        );
+
+        if (matchingMessage && matchingMessage._id) {
+          // Update the local message with the server ID
+          message._id = matchingMessage._id;
+          message.senderId = matchingMessage.senderId;
+          message.isRead = matchingMessage.isRead;
+          console.log('Successfully found message ID:', matchingMessage._id);
+
+          // Trigger change detection to update the UI
+          this.changeDetectorRef.detectChanges();
+        } else {
+          console.warn('Could not find matching message on server for:', message.content);
+        }
+      },
+      error: (err) => {
+        console.error('Error fetching chat history for ID matching:', err);
+      }
+    });
   }
 
   // Handle error with a more user-friendly approach
@@ -894,5 +1432,381 @@ export class UserChatComponent implements OnInit, AfterViewChecked, OnDestroy {
         this.handleMessageError(err);
       }
     });
+  }
+
+  // Get image source for display (synchronous for template)
+  getDisplayImageSrc(file: any): string {
+    if (!file || !file.data) {
+      console.warn('No file or file data provided');
+      return '';
+    }
+
+    const fileKey = `${file.originalname}_${file.data.substring(0, 50)}`;
+    console.log('Getting display image src for:', file.originalname, 'MIME type:', file.mimetype);
+
+    // Return cached version if available
+    if (this.imageDisplaySources.has(fileKey)) {
+      const cachedSrc = this.imageDisplaySources.get(fileKey)!;
+      console.log('Returning cached image for:', file.originalname);
+      return cachedSrc;
+    }
+
+    // For HEIC files, start conversion and return placeholder
+    if (this.isHeicFile(file.mimetype, file.originalname)) {
+      console.log('HEIC file detected, starting conversion:', file.originalname);
+      this.convertAndCacheImage(file, fileKey);
+      return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZjNmNGY2Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzY2NzM4NSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkNvbnZlcnRpbmcgSEVJQy4uLjwvdGV4dD48L3N2Zz4=';
+    }
+
+    // For regular images, ensure proper data URL format
+    let imageData = file.data;
+    if (!imageData.startsWith('data:')) {
+      imageData = `data:${file.mimetype || 'image/jpeg'};base64,${imageData}`;
+    }
+
+    console.log('Regular image processed:', file.originalname);
+    this.imageDisplaySources.set(fileKey, imageData);
+    return imageData;
+  }
+
+  // Convert and cache image asynchronously
+  private async convertAndCacheImage(file: any, fileKey: string): Promise<void> {
+    try {
+      console.log('Converting HEIC image:', file.originalname);
+      const convertedSrc = await this.getImageSrc(file);
+      this.imageDisplaySources.set(fileKey, convertedSrc);
+
+      // Trigger change detection to update the image
+      this.changeDetectorRef.detectChanges();
+      console.log('HEIC conversion completed for:', file.originalname);
+    } catch (error) {
+      console.error('Error converting image:', error);
+      // Set fallback image
+      const fallbackSrc = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZjNmNGY2Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzY2NzM4NSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkVycm9yIGxvYWRpbmcgaW1hZ2U8L3RleHQ+PC9zdmc+';
+      this.imageDisplaySources.set(fileKey, fallbackSrc);
+      this.changeDetectorRef.detectChanges();
+    }
+  }
+
+  // Handle image loading errors
+  onImageError(event: any, file: any): void {
+    console.error('Image failed to load:', file.originalname);
+    const img = event.target;
+    img.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZjNmNGY2Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzY2NzM4NSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlIG5vdCBhdmFpbGFibGU8L3RleHQ+PC9zdmc+';
+  }
+
+  // Manually sync message IDs for messages without IDs
+  syncMessageIds(): void {
+    if (!this.selectedUser) {
+      this.showNotification('No user selected', 'error');
+      return;
+    }
+
+    const messagesWithoutIds = this.messages.filter(msg => !msg._id);
+
+    if (messagesWithoutIds.length === 0) {
+      this.showNotification('All messages already have IDs', 'info');
+      return;
+    }
+
+    console.log(`Syncing IDs for ${messagesWithoutIds.length} messages`);
+    this.showNotification(`Syncing IDs for ${messagesWithoutIds.length} messages...`, 'info');
+
+    // Get fresh chat history from server
+    this.userService.getChatHistory(this.selectedUser.id).subscribe({
+      next: (serverMessages) => {
+        let syncedCount = 0;
+
+        messagesWithoutIds.forEach(localMsg => {
+          const matchingServerMsg = serverMessages.find(serverMsg =>
+            serverMsg.content === localMsg.content &&
+            serverMsg.senderType === localMsg.senderType &&
+            Math.abs(new Date(serverMsg.timestamp).getTime() - new Date(localMsg.timestamp).getTime()) < 15000 // 15 second tolerance
+          );
+
+          if (matchingServerMsg && matchingServerMsg._id) {
+            localMsg._id = matchingServerMsg._id;
+            localMsg.senderId = matchingServerMsg.senderId;
+            localMsg.isRead = matchingServerMsg.isRead;
+            syncedCount++;
+            console.log('Synced message ID:', matchingServerMsg._id, 'for content:', localMsg.content.substring(0, 30));
+          }
+        });
+
+        if (syncedCount > 0) {
+          this.showNotification(`Successfully synced ${syncedCount} message IDs`, 'success');
+          this.changeDetectorRef.detectChanges();
+        } else {
+          this.showNotification('Could not sync any message IDs', 'error');
+        }
+      },
+      error: (err) => {
+        console.error('Error syncing message IDs:', err);
+        this.showNotification('Error syncing message IDs', 'error');
+      }
+    });
+  }
+
+  // Debug method for troubleshooting message IDs
+  debugMessageIds(): void {
+    console.log('=== MESSAGE ID DEBUG INFO ===');
+    console.log('Total messages:', this.messages.length);
+
+    this.messages.forEach((message, index) => {
+      console.log(`Message ${index}:`, {
+        hasId: !!message._id,
+        id: message._id,
+        content: message.content?.substring(0, 30) + '...',
+        senderType: message.senderType,
+        senderId: message.senderId,
+        timestamp: message.timestamp,
+        isDeleted: message.isDeleted
+      });
+    });
+
+    const messagesWithoutId = this.messages.filter(m => !m._id);
+    console.log('Messages without ID:', messagesWithoutId.length);
+
+    if (messagesWithoutId.length > 0) {
+      console.log('Messages missing IDs:', messagesWithoutId);
+      this.showNotification(`Found ${messagesWithoutId.length} messages without IDs. Check console for details.`, 'info');
+    } else {
+      this.showNotification('All messages have IDs!', 'success');
+    }
+  }
+
+  // Debug method for troubleshooting (can be called from browser console)
+  debugImageIssues(): void {
+    console.log('=== IMAGE DEBUG INFO ===');
+    console.log('Messages with files:', this.messages.filter(m => m.file));
+    console.log('Image display sources cache:', this.imageDisplaySources);
+    console.log('Converted images cache:', this.convertedImages);
+
+    // Test each message file
+    this.messages.forEach((message, index) => {
+      if (message.file) {
+        console.log(`Message ${index}:`, {
+          messageId: message._id,
+          filename: message.file.originalname,
+          mimetype: message.file.mimetype,
+          isImage: this.isImageFile(message.file),
+          isHeic: this.isHeicFile(message.file.mimetype, message.file.originalname),
+          dataLength: message.file.data?.length || 0,
+          dataStart: message.file.data?.substring(0, 50) || 'No data'
+        });
+      }
+    });
+
+    console.log('=== ALL MESSAGES DEBUG ===');
+    this.messages.forEach((message, index) => {
+      console.log(`Message ${index}:`, {
+        id: message._id,
+        content: message.content?.substring(0, 50) + '...',
+        senderType: message.senderType,
+        hasFile: !!message.file,
+        isDeleted: message.isDeleted
+      });
+    });
+  }
+
+  // Test API connectivity and delete endpoint
+  testDeleteAPI(): void {
+    console.log('=== API DELETE TEST ===');
+
+    // Find a message to test with
+    const testMessage = this.messages.find(m => m._id && m.senderType === 'admin');
+    if (!testMessage) {
+      console.log('No admin messages found to test delete with');
+      return;
+    }
+
+    console.log('Testing delete with message:', testMessage._id);
+    console.log('API URL:', 'https://api.urbanwealthcapitals.com/api');
+    console.log('Full delete URL:', `https://api.urbanwealthcapitals.com/api/chat/message/${testMessage._id}`);
+
+    // Test if we can reach the API
+    this.userService.getUsers().subscribe({
+      next: (users) => {
+        console.log('✅ API is reachable - getUsers() works');
+        console.log('Users count:', users.length);
+      },
+      error: (error) => {
+        console.error('❌ API is not reachable - getUsers() failed:', error);
+      }
+    });
+  }
+
+  // Bulk delete all messages for current user
+  deleteAllUserMessages(): void {
+    if (!this.selectedUser) {
+      this.showNotification('No user selected', 'error');
+      return;
+    }
+
+    const confirmMessage = `Are you sure you want to delete ALL messages for user "${this.selectedUser.name}"? This action cannot be undone.`;
+
+    if (confirm(confirmMessage)) {
+      this.userService.deleteAllUserMessages(this.selectedUser.id).subscribe({
+        next: (response) => {
+          console.log('All user messages deleted successfully:', response);
+
+          // Clear messages from UI
+          this.messages = [];
+
+          // Update user's last message
+          if (this.selectedUser) {
+            this.selectedUser.lastMessage = undefined;
+            this.selectedUser.unreadCount = 0;
+          }
+
+          this.showNotification(`All messages deleted for user ${this.selectedUser?.name}`, 'success');
+          this.refreshUsersList();
+        },
+        error: (error) => {
+          console.error('Error deleting all user messages:', error);
+          this.showNotification('Failed to delete messages. Please try again.', 'error');
+        }
+      });
+    }
+  }
+
+  // Bulk delete all messages for all users (Admin only)
+  deleteAllMessages(): void {
+    const confirmMessage = 'Are you sure you want to delete ALL messages for ALL users? This action cannot be undone and will clear the entire chat history.';
+
+    if (confirm(confirmMessage)) {
+      this.userService.deleteAllMessages().subscribe({
+        next: (response) => {
+          console.log('All messages deleted successfully:', response);
+
+          // Clear all messages from UI
+          this.messages = [];
+
+          // Update all users' last messages
+          this.users.forEach(user => {
+            user.lastMessage = undefined;
+            user.unreadCount = 0;
+          });
+
+          this.showNotification('All messages deleted successfully', 'success');
+          this.refreshUsersList();
+        },
+        error: (error) => {
+          console.error('Error deleting all messages:', error);
+          this.showNotification('Failed to delete all messages. Please try again.', 'error');
+        }
+      });
+    }
+  }
+
+  // Refresh chat history to ensure all messages have proper IDs
+  refreshChatHistory(): void {
+    if (!this.selectedUser) {
+      console.warn('No user selected for chat history refresh');
+      return;
+    }
+
+    console.log('Refreshing chat history for user:', this.selectedUser.id);
+    this.loadChatHistory(this.selectedUser.id);
+  }
+
+  // Enhanced method to handle messages without IDs
+  handleMessageWithoutId(message: ChatMessage): void {
+    console.warn('Handling message without ID:', message);
+
+    // Try to find the message in the server by content and timestamp
+    if (this.selectedUser) {
+      this.userService.getChatHistory(this.selectedUser.id).subscribe({
+        next: (serverMessages) => {
+          // Try to match the message by content and approximate timestamp
+          const matchingMessage = serverMessages.find(serverMsg =>
+            serverMsg.content === message.content &&
+            serverMsg.senderType === message.senderType &&
+            Math.abs(new Date(serverMsg.timestamp).getTime() - new Date(message.timestamp).getTime()) < 10000 // 10 second tolerance
+          );
+
+          if (matchingMessage && matchingMessage._id) {
+            // Update the local message with the server ID
+            message._id = matchingMessage._id;
+            message.senderId = matchingMessage.senderId;
+            console.log('Successfully matched message with server ID:', matchingMessage._id);
+          } else {
+            console.warn('Could not find matching message on server');
+          }
+        },
+        error: (err) => {
+          console.error('Error fetching chat history for ID matching:', err);
+        }
+      });
+    }
+  }
+
+  // Test method for debugging edit functionality
+  testEditMode(): void {
+    console.log('=== TESTING EDIT MODE ===');
+    const adminMessage = this.messages.find(m => m.senderType === 'admin' && m._id);
+
+    if (adminMessage) {
+      console.log('Found admin message to test:', adminMessage._id);
+      console.log('Current editing state:', this.editingMessageIds);
+      console.log('Message isEditing:', adminMessage.isEditing);
+
+      // Test setting edit mode directly
+      adminMessage.isEditing = true;
+      adminMessage.editContent = adminMessage.content;
+
+      console.log('Edit mode set, triggering change detection...');
+      this.changeDetectorRef.detectChanges();
+
+      setTimeout(() => {
+        console.log('Edit mode should be active now');
+        console.log('Edit input should be visible in DOM');
+      }, 100);
+
+    } else {
+      console.log('No admin messages with ID found for testing');
+    }
+  }
+
+  // Alternative modal-based edit methods
+  openEditModal(message: ChatMessage): void {
+    console.log('Opening edit modal for message:', message._id);
+
+    if (!message._id) {
+      this.showNotification('Cannot edit message without ID', 'error');
+      return;
+    }
+
+    this.editModal.isOpen = true;
+    this.editModal.message = message;
+    this.editModal.editContent = message.content;
+  }
+
+  closeEditModal(): void {
+    console.log('Closing edit modal');
+    this.editModal.isOpen = false;
+    this.editModal.message = null;
+    this.editModal.editContent = '';
+  }
+
+  saveModalEdit(): void {
+    console.log('Saving modal edit');
+
+    if (!this.editModal.message || !this.editModal.editContent.trim()) {
+      this.showNotification('Message content cannot be empty', 'error');
+      return;
+    }
+
+    const message = this.editModal.message;
+    const originalContent = message.content;
+
+    // Update the message content
+    message.content = this.editModal.editContent.trim();
+
+    // Close modal
+    this.closeEditModal();
+
+    // Call server API
+    this.editMessageWithHistory(message, originalContent, 'Message edited by admin');
   }
 }

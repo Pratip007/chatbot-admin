@@ -1,1 +1,69 @@
 /* User chat component styles */
+
+/* Edit message input styling */
+.edit-input {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  color: white;
+  padding: 8px 12px;
+  width: 100%;
+  font-size: 14px;
+}
+
+.edit-input:focus {
+  outline: none;
+  border-color: rgba(59, 130, 246, 0.8);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+}
+
+/* Button hover effects */
+.btn-edit:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.btn-delete:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Edited message indicator */
+.edited-indicator {
+  font-style: italic;
+  opacity: 0.8;
+}
+
+/* Bulk action buttons */
+.bulk-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.bulk-btn {
+  transition: all 0.2s ease;
+}
+
+.bulk-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Message container improvements */
+.message-container {
+  transition: all 0.3s ease;
+}
+
+.message-container:hover {
+  transform: translateY(-1px);
+}
+
+/* Loading states */
+.loading-spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

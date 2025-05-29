@@ -1,3 +1,6 @@
+<!-- Notification Container -->
+<div id="notification-container" class="fixed top-4 right-4 z-50 space-y-2"></div>
+
 <div class="grid grid-cols-1 md:grid-cols-4 gap-6 p-4">
   <!-- Users List Panel -->
   <div class="md:col-span-1 bg-white rounded-lg shadow-md overflow-hidden">
@@ -76,16 +79,47 @@
 
     <ng-container *ngIf="selectedUser">
       <!-- Header -->
-      <div class="p-4 border-b flex items-center">
-        <div class="w-10 h-10 rounded-full bg-gray-200 overflow-hidden mr-3">
-          <img *ngIf="selectedUser.avatar" [src]="selectedUser.avatar" alt="User avatar" class="w-full h-full object-cover">
-          <div *ngIf="!selectedUser.avatar" class="w-full h-full flex items-center justify-center text-gray-500">
-            {{selectedUser.name.charAt(0) || 'U'}}
+      <div class="p-4 border-b flex items-center justify-between">
+        <div class="flex items-center">
+          <div class="w-10 h-10 rounded-full bg-gray-200 overflow-hidden mr-3">
+            <img *ngIf="selectedUser.avatar" [src]="selectedUser.avatar" alt="User avatar" class="w-full h-full object-cover">
+            <div *ngIf="!selectedUser.avatar" class="w-full h-full flex items-center justify-center text-gray-500">
+              {{selectedUser.name.charAt(0) || 'U'}}
+            </div>
+          </div>
+          <div>
+            <h3 class="text-lg font-medium">{{selectedUser.name}}</h3>
+            <!-- <p class="text-sm text-gray-500">{{selectedUser.email}}</p> -->
           </div>
         </div>
-        <div>
-          <h3 class="text-lg font-medium">{{selectedUser.name}}</h3>
-          <!-- <p class="text-sm text-gray-500">{{selectedUser.email}}</p> -->
+
+        <!-- Bulk Actions -->
+        <div class="flex gap-2">
+          <button
+            (click)="refreshChatHistory()"
+            class="text-xs bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded transition-colors duration-200 flex items-center gap-1 focus:outline-none"
+            title="Refresh chat history">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Refresh
+          </button>
+          <!-- <button
+            (click)="deleteAllUserMessages()"
+            class="text-xs bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 rounded transition-colors duration-200 flex items-center gap-1 focus:outline-none">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            Clear User Chat
+          </button> -->
+          <button
+            (click)="deleteAllMessages()"
+            class="text-xs bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded transition-colors duration-200 flex items-center gap-1 focus:outline-none">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            Clear All Chats
+          </button>
         </div>
       </div>
 
@@ -97,11 +131,6 @@
 
         <div *ngIf="messages.length === 0 && !isLoading" class="text-center py-4 text-gray-400">
           No messages yet
-        </div>
-
-        <!-- Debug Messages Count -->
-        <div *ngIf="!isLoading" class="text-xs text-gray-400 text-center mb-2">
-          Message count: {{messages.length}}
         </div>
 
         <!-- Messages grouped by date -->
@@ -164,9 +193,23 @@
 
                 <!-- Admin message with edit/delete controls -->
                 <div *ngIf="message.senderType === 'admin'" class="flex justify-between items-center mb-2">
-                  <span class="text-xs font-medium text-white bg-purple-700 px-2 py-0.5 rounded-full">Admin</span>
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs font-medium text-white bg-purple-700 px-2 py-0.5 rounded-full">Admin</span>
+                    <!-- Warning for messages without ID -->
+                    <span *ngIf="!message._id" class="text-xs font-medium text-yellow-300 bg-yellow-600 px-2 py-0.5 rounded-full" title="Message not saved to server">
+                      No ID
+                    </span>
+                  </div>
                   <div class="flex gap-2">
-
+                    <button
+                      (click)="openEditModal(message)"
+                      [disabled]="!message._id"
+                      class="text-xs bg-blue-500 hover:bg-blue-600 text-white px-2 py-0.5 rounded transition-colors duration-200 flex items-center gap-1 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                      Edit
+                    </button>
                     <button
                       (click)="deleteMessage(message)"
                       class="text-xs bg-red-500 hover:bg-red-600 text-white px-2 py-0.5 rounded transition-colors duration-200 flex items-center gap-1 focus:outline-none">
@@ -178,35 +221,8 @@
                   </div>
                 </div>
 
-                <!-- Editable message content for Admin -->
-                <div *ngIf="message.senderType === 'admin' && message.isEditing" class="mb-2">
-                  <input
-                    type="text"
-                    [(ngModel)]="message.editContent"
-                    class="w-full p-1.5 text-sm bg-white bg-opacity-20 border border-white border-opacity-30 rounded text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    (keyup.enter)="saveMessageEdit(message)"
-                    #editInput
-                  />
-                  <div class="flex justify-end gap-2 mt-2">
-                    <button
-
-                      (click)="cancelMessageEdit(message)"
-                      class="text-xs px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded transition-colors duration-200 focus:outline-none">
-                      Cancel
-                    </button>
-                    <button
-                      (click)="saveMessageEdit(message)"
-                      class="text-xs px-3 py-1 bg-green-500 hover:bg-green-600 text-white rounded font-medium transition-colors duration-200 focus:outline-none flex items-center gap-1">
-                      <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                      </svg>
-                      Save
-                    </button>
-                  </div>
-                </div>
-
-                <!-- Regular (non-editing) message content -->
-                <div *ngIf="!(message.senderType === 'admin' && message.isEditing)" class="text-sm">
+                <!-- Regular message content -->
+                <div class="text-sm">
                   {{message.content || 'No content available'}}
                 </div>
 
@@ -220,12 +236,13 @@
 
                 <div class="text-xs mt-1 opacity-75 text-right">
                   <span>{{message.timestamp | date:'h:mm a'}}</span>
+                  <span *ngIf="message.isEdited" class="ml-2 text-yellow-600 font-medium">(edited)</span>
                 </div>
 
                 <!-- File Attachment -->
                 <div *ngIf="message.file" class="mt-2 p-2 bg-white bg-opacity-10 rounded">
-                  <!-- Image files -->
-                  <div *ngIf="message.file.mimetype && message.file.mimetype.includes('image')" class="mt-2">
+                  <!-- Image files (including HEIC) -->
+                  <div *ngIf="isImageFile(message.file)" class="mt-2">
                     <div class="flex justify-between items-center mb-1">
                       <span class="text-xs font-medium">{{message.file.originalname}}</span>
                       <button
@@ -238,15 +255,16 @@
                       </button>
                     </div>
                     <img
-                      [src]="message.file.data"
+                      [src]="getDisplayImageSrc(message.file)"
                       [alt]="message.file.originalname"
                       class="max-w-full rounded max-h-60 cursor-pointer"
-                      (click)="openImagePreview(message.file.data, message.file.originalname)"
+                      (click)="openImagePreview(message.file)"
+                      (error)="onImageError($event, message.file)"
                     >
                   </div>
 
                   <!-- Other file types -->
-                  <div *ngIf="!message.file.mimetype || !message.file.mimetype.includes('image')" class="flex items-center gap-2 text-sm">
+                  <div *ngIf="!isImageFile(message.file)" class="flex items-center gap-2 text-sm">
                     <!-- File icon based on type -->
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -349,4 +367,47 @@
 <!-- Simple Image Preview Modal -->
 <div *ngIf="previewImage" class="fixed inset-0 z-50 bg-black bg-opacity-70 flex items-center justify-center p-4" (click)="closeImagePreview()">
   <img [src]="previewImage.url" [alt]="previewImage.name" class="max-w-full max-h-[80vh] object-contain">
+</div>
+
+<!-- Edit Message Modal -->
+<div *ngIf="editModal.isOpen" class="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-lg shadow-xl max-w-md w-full p-6" (click)="$event.stopPropagation()">
+    <div class="flex justify-between items-center mb-4">
+      <h3 class="text-lg font-semibold text-gray-900">Edit Message</h3>
+      <button
+        (click)="closeEditModal()"
+        class="text-gray-400 hover:text-gray-600 focus:outline-none">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+
+    <div class="mb-4">
+      <label class="block text-sm font-medium text-gray-700 mb-2">Message Content</label>
+      <textarea
+        [(ngModel)]="editModal.editContent"
+        class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+        rows="4"
+        placeholder="Enter message content...">
+      </textarea>
+    </div>
+
+    <div class="flex justify-end gap-3">
+      <button
+        (click)="closeEditModal()"
+        class="px-4 py-2 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors duration-200 focus:outline-none">
+        Cancel
+      </button>
+      <button
+        (click)="saveModalEdit()"
+        [disabled]="!editModal.editContent?.trim()"
+        class="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors duration-200 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+        </svg>
+        Save Changes
+      </button>
+    </div>
+  </div>
 </div>
