@@ -1,7 +1,9 @@
 {
-  "buildCommand": "npm install && npm run build",
-  "outputDirectory": "dist/admin",
-  "installCommand": "npm install ",
+  "version": 2,
+  "framework": "angular",
+  "buildCommand": "npm install --legacy-peer-deps && npm run build:prod",
+  "outputDirectory": "dist/admin/browser",
+  "installCommand": "npm install --legacy-peer-deps",
   "rewrites": [
     {
       "source": "/(.*)",
