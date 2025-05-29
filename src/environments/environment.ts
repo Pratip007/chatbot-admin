@@ -1,5 +1,5 @@
 export const environment = {
-  production: false,
-  API_URL: 'http://localhost:5000/api',
-  SOCKET_URL: 'http://localhost:5000'
+  production: true,
+  API_URL: 'https://api.urbanwealthcapitals.com/api',
+  SOCKET_URL: 'https://api.urbanwealthcapitals.com'
 };

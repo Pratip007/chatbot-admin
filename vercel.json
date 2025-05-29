@@ -1,7 +1,7 @@
 {
-  "buildCommand": "npm install --legacy-peer-deps && npm run build:prod",
+  "buildCommand": "npm install && npm run build",
   "outputDirectory": "dist/admin",
-  "installCommand": "npm install --legacy-peer-deps",
+  "installCommand": "npm install ",
   "rewrites": [
     {
       "source": "/(.*)",
