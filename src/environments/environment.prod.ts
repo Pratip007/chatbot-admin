@@ -1,5 +1,5 @@
 export const environment = {
   production: true,
-  API_URL: 'https://api.urbanwealthcapitals.com/api',
+  API_URL: 'https://api.urbanwealthcapitals.com',
   SOCKET_URL: 'https://api.urbanwealthcapitals.com'
 };
