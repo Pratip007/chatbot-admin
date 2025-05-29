@@ -1007,9 +1007,18 @@ export class UserChatComponent implements OnInit, AfterViewChecked, OnDestroy {
     if (element.files && element.files.length > 0) {
       const file = element.files[0];
 
-      // Check file size (limit to 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        alert('File size exceeds 5MB limit. Please select a smaller file.');
+      // Check file size (limit to 1MB)
+      const maxSizeInBytes = 1024 * 1024; // 1MB
+      if (file.size > maxSizeInBytes) {
+        const fileSizeInMB = (file.size / (1024 * 1024)).toFixed(2);
+
+        // Show user-friendly error message
+        this.showNotification(
+          `File "${file.name}" is too large (${fileSizeInMB}MB). Maximum file size allowed is 1MB. Please choose a smaller file.`,
+          'error'
+        );
+
+        // Clear the file input
         element.value = '';
         return;
       }

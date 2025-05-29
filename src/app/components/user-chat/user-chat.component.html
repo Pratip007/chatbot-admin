@@ -299,6 +299,7 @@
               (click)="fileInput.click()"
               class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-2 rounded-lg transition-colors duration-200 flex items-center justify-center"
               [disabled]="isLoading"
+              title="Attach file (Max size: 1MB)"
             >
               <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
@@ -349,6 +350,11 @@
           <div *ngIf="isLoading" class="text-xs text-primary text-center animate-pulse">
             <span *ngIf="selectedFile">Uploading file... This may take a moment.</span>
             <span *ngIf="!selectedFile">Sending message...</span>
+          </div>
+
+          <!-- File size limit indicator -->
+          <div class="text-xs text-gray-500 text-center mt-1">
+            📎 Maximum file size: 1MB
           </div>
         </form>
       </div>
