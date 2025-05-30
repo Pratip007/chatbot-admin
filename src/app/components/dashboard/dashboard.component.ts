@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { Router, RouterModule } from '@angular/router';
 import { UserService } from '../../services/user.service';
 import { MessageService } from '../../services/message.service';
+import { AuthService } from '../../services/auth.service';
 import { User } from '../../models/user.model';
 import { Message } from '../../models/message.model';
 import { HttpClientModule } from '@angular/common/http';
@@ -36,7 +37,8 @@ export class DashboardComponent implements OnInit {
   constructor(
     private userService: UserService,
     private messageService: MessageService,
-    private router: Router
+    private router: Router,
+    private authService: AuthService
   ) { }
 
   ngOnInit(): void {
@@ -157,6 +159,11 @@ export class DashboardComponent implements OnInit {
         }
       });
     }
+  }
+
+  logoutDashboard(): void {
+    this.authService.logoutDashboard();
+    this.router.navigate(['/chat']);
   }
 
   private showNotification(message: string, type: 'success' | 'error' | 'info' = 'info'): void {
