@@ -1820,4 +1820,34 @@ export class UserChatComponent implements OnInit, AfterViewChecked, OnDestroy {
     // Call server API
     this.editMessageWithHistory(message, originalContent, 'Message edited by admin');
   }
+
+  // Handle keyboard events in textarea
+  onTextareaKeydown(event: KeyboardEvent): void {
+    // If Shift+Enter is pressed, allow default behavior (new line)
+    if (event.key === 'Enter' && event.shiftKey) {
+      // Allow default behavior - this will create a new line
+      return;
+    }
+
+    // If just Enter is pressed (without Shift), submit the form
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault(); // Prevent default new line
+      this.sendMessage(); // Submit the form
+    }
+  }
+
+  // Handle keyboard events in edit modal textarea
+  onEditModalKeydown(event: KeyboardEvent): void {
+    // If Shift+Enter is pressed, allow default behavior (new line)
+    if (event.key === 'Enter' && event.shiftKey) {
+      // Allow default behavior - this will create a new line
+      return;
+    }
+
+    // If just Enter is pressed (without Shift), save the edit
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault(); // Prevent default new line
+      this.saveModalEdit(); // Save the edit
+    }
+  }
 }

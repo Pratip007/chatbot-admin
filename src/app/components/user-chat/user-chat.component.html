@@ -214,7 +214,7 @@
                 </div>
 
                 <!-- Regular message content -->
-                <div class="text-sm">
+                <div class="text-sm" style="white-space: pre-wrap;">
                   {{message.content || 'No content available'}}
                 </div>
 
@@ -285,14 +285,16 @@
         <form (ngSubmit)="sendMessage()" class="flex flex-col gap-2">
           <!-- Message Input -->
           <div class="flex gap-3">
-            <input
-              type="text"
+            <textarea
               [(ngModel)]="newMessage"
               name="message"
-              class="flex-1 border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent shadow-sm text-gray-700"
-              placeholder="Type your message here..."
+              rows="1"
+              class="flex-1 border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent shadow-sm text-gray-700 resize-none"
+              placeholder="Type your message here... "
               [disabled]="isLoading"
-            >
+              (keydown)="onTextareaKeydown($event)"
+              style="min-height: 44px; max-height: 120px; overflow-y: auto;"
+            ></textarea>
             <!-- File Upload Button -->
             <button
               type="button"
@@ -387,7 +389,8 @@
         [(ngModel)]="editModal.editContent"
         class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
         rows="4"
-        placeholder="Enter message content...">
+        placeholder="Enter message content... (Shift+Enter for new line)"
+        (keydown)="onEditModalKeydown($event)">
       </textarea>
     </div>
 
