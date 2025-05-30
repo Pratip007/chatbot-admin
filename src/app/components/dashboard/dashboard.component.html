@@ -164,7 +164,14 @@
               {{user.lastActive ? (user.lastActive | date:'mediumDate') : 'Never'}}
             </td>
             <td class="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-xs md:text-sm">
-              <button class="text-indigo-600 hover:text-indigo-900" (click)="viewUserMessages(user.id)">Messages</button>
+              <div class="flex gap-2">
+                <button class="bg-primary text-white px-3 py-1 rounded hover:bg-primary-dark" (click)="viewUserMessages(user.id)">Chat</button>
+                <button class="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 transition-colors duration-200" (click)="deleteUser(user)" title="Delete User">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
+              </div>
             </td>
           </tr>
         </tbody>
@@ -267,7 +274,14 @@
               {{user.messages?.length || 0}}
             </td>
             <td class="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-xs md:text-sm">
-              <button class="bg-primary text-white px-3 py-1 rounded hover:bg-primary-dark" (click)="viewUserMessages(user.id)">Chat</button>
+              <div class="flex gap-2">
+                <button class="bg-primary text-white px-3 py-1 rounded hover:bg-primary-dark" (click)="viewUserMessages(user.id)">Chat</button>
+                <button class="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 transition-colors duration-200" (click)="deleteUser(user)" title="Delete User">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
+              </div>
             </td>
           </tr>
           <tr *ngIf="users.length === 0">

@@ -123,4 +123,85 @@ export class DashboardComponent implements OnInit {
     const name = this.users.find(u => u.id === userId)?.name;
     return name ? name.charAt(0) : 'U';
   }
+
+  deleteUser(user: UserWithLastMessageTime): void {
+    const confirmMessage = `Are you sure you want to delete user "${user.name}"? This will permanently delete the user and all their messages. This action cannot be undone.`;
+
+    if (confirm(confirmMessage)) {
+      const adminId = 'admin499'; // This should come from auth service in production
+
+      this.userService.deleteUser(user.id, adminId).subscribe({
+        next: (response) => {
+          console.log('User deleted successfully:', response);
+
+          // Remove user from local array
+          this.users = this.users.filter(u => u.id !== user.id);
+
+          // Update stats
+          this.totalUsers = this.users.length;
+          this.activeUsers = this.users.length;
+          this.totalMessages = this.users.reduce((total: number, user: User) => {
+            return total + (user.messages?.length || 0);
+          }, 0);
+
+          // Remove from unread messages
+          this.unreadMessages = this.unreadMessages.filter(msg => msg.userId !== user.id);
+
+          // Show success notification
+          this.showNotification(`User "${user.name}" has been deleted successfully`, 'success');
+        },
+        error: (error) => {
+          console.error('Error deleting user:', error);
+          const errorMessage = error.error?.error || error.message || 'Failed to delete user';
+          this.showNotification(`Failed to delete user: ${errorMessage}`, 'error');
+        }
+      });
+    }
+  }
+
+  private showNotification(message: string, type: 'success' | 'error' | 'info' = 'info'): void {
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.className = `fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg max-w-sm transition-all duration-300 transform translate-x-full`;
+
+    // Set colors based on type
+    switch (type) {
+      case 'success':
+        notification.className += ' bg-green-500 text-white';
+        break;
+      case 'error':
+        notification.className += ' bg-red-500 text-white';
+        break;
+      default:
+        notification.className += ' bg-blue-500 text-white';
+    }
+
+    notification.innerHTML = `
+      <div class="flex items-center justify-between">
+        <span class="text-sm font-medium">${message}</span>
+        <button onclick="this.parentElement.parentElement.remove()" class="ml-4 text-white hover:text-gray-200">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+          </svg>
+        </button>
+      </div>
+    `;
+
+    document.body.appendChild(notification);
+
+    // Animate in
+    setTimeout(() => {
+      notification.classList.remove('translate-x-full');
+    }, 100);
+
+    // Auto remove after 5 seconds
+    setTimeout(() => {
+      notification.classList.add('translate-x-full');
+      setTimeout(() => {
+        if (notification.parentNode) {
+          notification.parentNode.removeChild(notification);
+        }
+      }, 300);
+    }, 5000);
+  }
 }
